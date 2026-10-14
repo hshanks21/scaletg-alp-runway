@@ -1,45 +1,54 @@
-<!--
-════════════════════════════════════════════════════════════════════════════
-ABOUT THIS DOCUMENT — README.md
-Purpose : The front door. What this project is, how to run it, and an index to
-          every other doc. The first thing a human OR an agent reads.
-Audience: Everyone — new contributors, users, and agents orienting themselves.
-Update  : Whenever the elevator pitch, quickstart, or doc set changes.
-Belongs : One-paragraph "what & why", quickstart/setup, a table linking the
-          other docs in reading order, tech-stack summary.
-NOT here: Deep design rationale (→ ARCHITECTURE.md), the plan (→ PLAN.md),
-          data model (→ SCHEMA.md). Keep it a map, not the territory.
-Delete this comment block once the README holds real content.
-════════════════════════════════════════════════════════════════════════════
--->
+# Runway Prototype — AlixPartners Budget Tool Modernization
 
-# <Project Name>
+**Scale Technology Group — Client Prototype**
 
-<One paragraph: what this project is and why it exists. Plain language.>
+A working prototype demonstrating the "art of the possible" for AlixPartners' Budget Tool modernization. Built on Scale's standard stack (React + Express + Supabase Postgres) for speed of delivery. Production deployment will migrate to Azure (App Service + SQL Server + Entra ID).
 
-## Quickstart
+## Quick Start
 
 ```bash
-# clone, install, run — the shortest path to "it's working locally"
+# Install dependencies
+pnpm install
+
+# Set up the database
+# (Supabase project URL + keys in .env)
+
+# Start development
+pnpm dev
 ```
 
-## Documentation (read in this order)
+## Stack
 
-| # | Document | What it defines |
-|---|----------|-----------------|
-| 1 | [PLAN.md](./PLAN.md) | The build roadmap — milestones, scope, acceptance. **Start here.** |
-| 2 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Components, data flow, key decisions. |
-| 3 | [SCHEMA.md](./SCHEMA.md) | Data model + invariants. |
-| 4 | [AGENTS.md](./AGENTS.md) | How agents/contributors operate here. |
-| 5 | [DESIGN.md](./DESIGN.md) | UI/UX spec + design tokens. |
+| Layer | Technology | Production Migration |
+|-------|-----------|---------------------|
+| Frontend | React + Vite + Tailwind + ShadCN | Azure Static Web Apps (carries over) |
+| Backend | Express + TypeScript + Drizzle ORM | Azure App Service (carries over) |
+| Database | Supabase Postgres | Azure SQL / SQL Server (rewire Drizzle) |
+| Auth | Supabase Auth (magic link) | Entra ID + Duo (MSAL) |
 
-**Planning:** [ROADMAP.md](./ROADMAP.md) (committed next work) ·
-[IDEAS.md](./IDEAS.md) (backlog of maybes) ·
-[HANDOFF.md](./HANDOFF.md) (where we left off / what's next).
+## Project Structure
 
-**Releasing:** [RELEASING.md](./RELEASING.md) (tag-per-version procedure) ·
-[CHANGELOG.md](./CHANGELOG.md) (what shipped, per version).
+```
+frontend/           ← React app (Vite + Tailwind)
+backend/            ← Express API (TypeScript)
+docs/               ← Domain context, decisions, feature list
+  CONTEXT.md        ← Domain glossary (use these terms)
+  product-decisions.md
+  phase1-feature-list.md
+CLAUDE.md           ← Agent onboarding
+AGENTS.md           ← Working protocol
+PLAN.md             ← Implementation plan
+```
 
-## Tech stack
+## Phases
 
-- <language / framework / datastore / key libraries — decided, not aspirational>
+- **This prototype:** Demonstrate Budget creation, live profitability, approval workflow, versioning, and Budget vs. Actual — enough to win the deal.
+- **Phase 1 (production):** Modernize the Budget Tool on Azure, same database.
+- **Phase 2 (production):** Budget vs. Actual tracking with Actuals from SAP.
+
+## Documentation
+
+- [CONTEXT.md](docs/CONTEXT.md) — Domain glossary. Use these terms, not alternatives.
+- [Product Decisions](docs/product-decisions.md) — How Runway behaves and why.
+- [Phase 1 Feature List](docs/phase1-feature-list.md) — SOW exhibit scope.
+- [PLAN.md](PLAN.md) — Implementation plan for the prototype.
