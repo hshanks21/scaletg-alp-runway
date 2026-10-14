@@ -2,220 +2,183 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Runway — AlixPartners Engagement Workflow</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<title>Runway — Plan it. Track it. Land it.</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=JetBrains+Mono:wght@400;500;700&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#020617; font-family:'JetBrains Mono',monospace; color:#e2e8f0; padding:28px; }
-  .header { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
-  .dot { width:10px; height:10px; border-radius:50%; background:#22d3ee; animation:pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-  h1 { font-size:20px; font-weight:700; }
-  .sub { color:#64748b; font-size:11px; margin-bottom:20px; }
-  .frame { border:1px solid #1e293b; border-radius:12px; overflow:hidden; background:#020617; }
+  :root {
+    --paper:#faf6e9; --navy:#1b2f6e; --navy-soft:#2a3f85; --pink:#e82d7c; --cyan:#19b8d8; --ink:#223;
+  }
+  body {
+    width:1600px; height:900px; background:var(--paper); position:relative; overflow:hidden;
+    font-family:'JetBrains Mono',monospace; color:var(--navy);
+    background-image:
+      linear-gradient(rgba(27,47,110,0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(27,47,110,0.055) 1px, transparent 1px);
+    background-size:28px 28px;
+  }
+  .corner { position:absolute; font-size:18px; color:var(--navy); opacity:.6; }
+  .c-tl{top:10px;left:14px}.c-tr{top:10px;right:14px}.c-bl{bottom:10px;left:14px}.c-br{bottom:10px;right:14px}
+
+  .meta-left { position:absolute; top:26px; left:56px; font-size:12px; font-weight:700; letter-spacing:.5px; line-height:1.5; }
+  .meta-left .sub { font-weight:400; color:var(--navy-soft); }
+  .meta-right { position:absolute; top:26px; right:56px; font-size:11px; font-weight:500; letter-spacing:.5px; text-align:right; line-height:1.55; text-transform:uppercase; }
+
+  .title { position:absolute; top:52px; width:100%; text-align:center; }
+  .title h1 { font-family:'Playfair Display',serif; font-weight:800; font-size:52px; color:var(--navy); letter-spacing:-.5px; }
+  .title h2 { font-size:19px; font-weight:400; color:var(--ink); margin-top:4px; }
+
+  .panel-title { font-family:'Playfair Display',serif; font-weight:800; font-size:34px; color:var(--navy); }
+  .panel-sub { font-size:15px; color:var(--ink); margin-top:2px; }
+
+  .left-head { position:absolute; top:168px; left:70px; }
+  .right-head { position:absolute; top:168px; right:70px; text-align:left; width:560px; }
+
+  .frame { position:absolute; border:1.5px dashed var(--navy); border-radius:4px; background:rgba(250,246,233,0.35); }
+  .frame-l { top:248px; left:62px; width:586px; height:520px; }
+  .frame-r { top:248px; right:62px; width:586px; height:520px; }
+
+  .node {
+    position:absolute; border:2px solid var(--navy); border-radius:8px; background:#fdfbf2;
+    box-shadow:2.5px 2.5px 0 rgba(27,47,110,0.18); text-align:center; padding:9px 8px 8px;
+  }
+  .node .n-title { font-size:14.5px; font-weight:700; color:var(--navy); }
+  .node .n-sub { font-size:10.5px; color:var(--navy-soft); margin-top:3px; line-height:1.45; }
+
+  .bullets { position:absolute; font-size:13.5px; line-height:1.85; color:var(--navy); }
+  .bullets .b::before { content:'●  '; color:var(--cyan); font-size:11px; }
+
+  .hand { font-family:'Caveat',cursive; color:var(--pink); line-height:1.1; }
+
+  svg.wire { position:absolute; top:0; left:0; width:1600px; height:900px; pointer-events:none; }
+
+  .mid { position:absolute; left:648px; top:340px; width:304px; text-align:center; }
+  .mid .mono { font-size:13.5px; line-height:1.7; color:var(--navy); }
+
+  .footer { position:absolute; bottom:24px; left:56px; right:56px; display:flex; justify-content:space-between; font-size:11.5px; letter-spacing:1px; color:var(--navy-soft); text-transform:uppercase; }
+  .footer .l { border-left:2px solid var(--navy); padding-left:10px; }
 </style>
 </head>
 <body>
-<div class="header"><div class="dot"></div><h1>RUNWAY — ENGAGEMENT LIFECYCLE & TOOL WORKFLOW</h1></div>
-<div class="sub">AlixPartners process end-to-end · Phase 1 (Budget) + Phase 2 (Budget vs. Actual) · prototype scope</div>
-<div class="frame">
-<svg viewBox="0 0 1480 980" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
-    </pattern>
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
-    </marker>
-    <marker id="arrowCyan" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#22d3ee"/>
-    </marker>
-    <marker id="arrowAmber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/>
-    </marker>
-    <marker id="arrowViolet" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/>
-    </marker>
-    <marker id="arrowRose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/>
-    </marker>
-  </defs>
-  <rect width="1480" height="980" fill="url(#grid)"/>
+  <div class="corner c-tl">+</div><div class="corner c-tr">+</div><div class="corner c-bl">+</div><div class="corner c-br">+</div>
 
-  <!-- ════ PHASE 1 LANE ════ -->
-  <rect x="20" y="20" width="1440" height="300" rx="12" fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
-  <text x="40" y="48" fill="#22d3ee" font-size="13" font-weight="700" font-family="JetBrains Mono">PHASE 1 — PLAN THE ENGAGEMENT (BUDGET)</text>
-  <text x="40" y="64" fill="#64748b" font-size="9" font-family="JetBrains Mono">"Should we take this deal, staffed this way, at this margin?"</text>
+  <div class="meta-left">SCALE TECHNOLOGY GROUP<br><span class="sub">Runway — Engagement Economics</span></div>
+  <div class="meta-right">ALIXPARTNERS<br>FIXED-FEE ENGAGEMENTS<br>BUDGET → ACTUAL → FORECAST</div>
 
-  <!-- arrows phase 1 (drawn early, behind boxes) -->
-  <line x1="250" y1="160" x2="320" y2="160" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
-  <line x1="550" y1="160" x2="620" y2="160" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
-  <line x1="850" y1="160" x2="920" y2="160" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
-  <line x1="1150" y1="160" x2="1220" y2="160" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
-  <!-- reject loop -->
-  <path d="M 1000 200 Q 1000 260 700 260 Q 420 260 420 205" fill="none" stroke="#fb7185" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrowRose)"/>
-  <text x="660" y="252" fill="#fb7185" font-size="8" font-family="JetBrains Mono">REJECTED → back to Draft (with comment)</text>
+  <div class="title">
+    <h1>Plan it. Track it. Land it.</h1>
+    <h2>One engagement, two phases. Margin visible while the work happens — not at month-end.</h2>
+  </div>
 
-  <!-- P1 boxes -->
-  <g>
-    <rect x="60" y="120" width="190" height="85" rx="6" fill="#0f172a"/>
-    <rect x="60" y="120" width="190" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-    <text x="155" y="145" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">CREATE ENGAGEMENT</text>
-    <text x="155" y="162" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">Engagement Owner (PMD)</text>
-    <text x="155" y="178" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">client · fee · dates</text>
-    <text x="155" y="190" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">period type (wk/mo)</text>
-  </g>
-  <g>
-    <rect x="320" y="120" width="230" height="85" rx="6" fill="#0f172a"/>
-    <rect x="320" y="120" width="230" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-    <text x="435" y="145" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">BUILD THE BUDGET</text>
-    <text x="435" y="162" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">Tasks → Resources → Hours</text>
-    <text x="435" y="178" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">staffing plan per period · rates prefill</text>
-    <text x="435" y="190" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Placeholders (TBD) allowed</text>
-  </g>
-  <g>
-    <rect x="620" y="120" width="230" height="85" rx="6" fill="#0f172a"/>
-    <rect x="620" y="120" width="230" height="85" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-    <text x="735" y="145" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">LIVE PROFITABILITY</text>
-    <text x="735" y="162" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">recalc on every edit</text>
-    <text x="735" y="178" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Revenue · Margin % · Realization</text>
-    <text x="735" y="190" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Leverage · % below Director</text>
-  </g>
-  <g>
-    <rect x="920" y="120" width="230" height="85" rx="6" fill="#0f172a"/>
-    <rect x="920" y="120" width="230" height="85" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/>
-    <text x="1035" y="145" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">SUBMIT → APPROVE</text>
-    <text x="1035" y="162" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">Leadership (Approver role)</text>
-    <text x="1035" y="178" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Checkpoint at Submit + Approve</text>
-    <text x="1035" y="190" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Approved = BASELINE 📌</text>
-  </g>
-  <g>
-    <rect x="1220" y="120" width="200" height="85" rx="6" fill="#0f172a"/>
-    <rect x="1220" y="120" width="200" height="85" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-    <text x="1320" y="145" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">ENGAGEMENT RUNS</text>
-    <text x="1320" y="162" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">consultants do the work</text>
-    <text x="1320" y="178" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">SAP Project created from</text>
-    <text x="1320" y="190" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">the approved Budget</text>
-  </g>
+  <div class="left-head">
+    <div class="panel-title">Phase 1 — The Budget</div>
+    <div class="panel-sub">Plan the engagement before it starts.</div>
+  </div>
+  <div class="right-head" style="right:70px;">
+    <div class="panel-title">Phase 2 — Budget vs. Actual</div>
+    <div class="panel-sub">Track and reforecast while it runs.</div>
+  </div>
 
-  <!-- modify / re-approve note -->
-  <text x="1035" y="295" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Editing an APPROVED budget → "Modified" checkpoint · re-approval if it crosses the threshold</text>
+  <div class="frame frame-l"></div>
+  <div class="frame frame-r"></div>
 
-  <!-- ════ DATA FLOW LANE (middle) ════ -->
-  <rect x="20" y="350" width="1440" height="180" rx="12" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
-  <text x="40" y="378" fill="#fbbf24" font-size="13" font-weight="700" font-family="JetBrains Mono">DATA PIPELINE — WHILE THE ENGAGEMENT RUNS (daily)</text>
+  <!-- ══ wires ══ -->
+  <svg class="wire" viewBox="0 0 1600 900">
+    <defs>
+      <marker id="ah" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+        <polygon points="0 0, 9 3.5, 0 7" fill="#1b2f6e"/>
+      </marker>
+      <marker id="ahPink" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+        <polygon points="0 0, 9 3.5, 0 7" fill="#e82d7c"/>
+      </marker>
+      <marker id="ahCyanL" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto">
+        <polygon points="10 0, 0 4, 10 8" fill="#19b8d8"/>
+      </marker>
+      <marker id="ahCyanR" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+        <polygon points="0 0, 10 4, 0 8" fill="#19b8d8"/>
+      </marker>
+    </defs>
 
-  <!-- pipeline arrows -->
-  <line x1="300" y1="460" x2="370" y2="460" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
-  <line x1="610" y1="460" x2="680" y2="460" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
-  <line x1="920" y1="460" x2="990" y2="460" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrowAmber)"/>
-  <text x="310" y="450" fill="#64748b" font-size="8" font-family="JetBrains Mono">timecards</text>
-  <text x="625" y="450" fill="#64748b" font-size="8" font-family="JetBrains Mono">ETL ≥daily</text>
-  <text x="928" y="450" fill="#64748b" font-size="8" font-family="JetBrains Mono">reads only</text>
+    <!-- LEFT column flow -->
+    <line x1="355" y1="337" x2="355" y2="362" stroke="#1b2f6e" stroke-width="2" marker-end="url(#ah)"/>
+    <line x1="355" y1="441" x2="355" y2="466" stroke="#1b2f6e" stroke-width="2" marker-end="url(#ah)"/>
+    <line x1="355" y1="545" x2="355" y2="570" stroke="#1b2f6e" stroke-width="2" marker-end="url(#ah)"/>
+    <!-- reject loop (pink, dashed, out the left side) -->
+    <path d="M 198 612 C 130 612 130 500 130 415 C 130 330 160 310 196 306" fill="none" stroke="#e82d7c" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#ahPink)"/>
 
-  <g>
-    <rect x="80" y="420" width="220" height="80" rx="6" fill="#0f172a"/>
-    <rect x="80" y="420" width="220" height="80" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
-    <text x="190" y="447" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">CONSULTANTS</text>
-    <text x="190" y="464" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">log time in Intapp</text>
-    <text x="190" y="480" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">billable + non-billable hours</text>
-  </g>
-  <g>
-    <rect x="370" y="420" width="240" height="80" rx="6" fill="#0f172a"/>
-    <rect x="370" y="420" width="240" height="80" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
-    <text x="490" y="447" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">INTAPP → SAP → DATA LAKE</text>
-    <text x="490" y="464" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">existing firm ETL (untouched)</text>
-    <text x="490" y="480" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">actual hours land ~1 day later</text>
-  </g>
-  <g>
-    <rect x="680" y="420" width="240" height="80" rx="6" fill="#0f172a"/>
-    <rect x="680" y="420" width="240" height="80" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
-    <text x="800" y="447" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">BUDGET TOOL DB</text>
-    <text x="800" y="464" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">SQL Server (mdmebt-prod)</text>
-    <text x="800" y="480" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">rates · resources · ProfitHurdle · holidays</text>
-  </g>
-  <g>
-    <rect x="990" y="420" width="240" height="80" rx="6" fill="#0f172a"/>
-    <rect x="990" y="420" width="240" height="80" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-    <text x="1110" y="447" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">RUNWAY COEFFICIENT JOB</text>
-    <text x="1110" y="464" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">Ideal Hours Coefficient · ≥weekly</text>
-    <text x="1110" y="480" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">own copy — month-end calc untouched</text>
-  </g>
-  <text x="740" y="520" fill="#fb7185" font-size="9" font-family="JetBrains Mono" text-anchor="middle">⚠ HARD RULE: the existing Budget Tool + month-end profitability calc are NEVER modified — Runway only reads and adds alongside</text>
+    <!-- RIGHT column flow -->
+    <line x1="1245" y1="337" x2="1245" y2="362" stroke="#1b2f6e" stroke-width="2" marker-end="url(#ah)"/>
+    <line x1="1245" y1="441" x2="1245" y2="466" stroke="#1b2f6e" stroke-width="2" marker-end="url(#ah)"/>
+    <line x1="1245" y1="545" x2="1245" y2="570" stroke="#1b2f6e" stroke-width="2" marker-end="url(#ah)"/>
+    <!-- weekly loop (navy dashed, out the right side) -->
+    <path d="M 1404 612 C 1470 612 1470 500 1470 415 C 1470 330 1440 310 1404 306" fill="none" stroke="#1b2f6e" stroke-width="2" stroke-dasharray="5,5" marker-end="url(#ah)"/>
 
-  <!-- ════ PHASE 2 LANE ════ -->
-  <rect x="20" y="560" width="1440" height="310" rx="12" fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>
-  <text x="40" y="588" fill="#34d399" font-size="13" font-weight="700" font-family="JetBrains Mono">PHASE 2 — TRACK & REFORECAST (BUDGET vs. ACTUAL) · the Co-CEO ask</text>
-  <text x="40" y="604" fill="#64748b" font-size="9" font-family="JetBrains Mono">"How is this engagement performing RIGHT NOW — and where will it land?" (today: only visible at month-end close)</text>
+    <!-- center double arrow -->
+    <line x1="672" y1="430" x2="928" y2="430" stroke="#19b8d8" stroke-width="3.5" marker-start="url(#ahCyanL)" marker-end="url(#ahCyanR)"/>
+  </svg>
 
-  <!-- phase 2 arrows -->
-  <line x1="320" y1="700" x2="390" y2="700" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <line x1="660" y1="700" x2="730" y2="700" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <line x1="1000" y1="700" x2="1070" y2="700" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)"/>
-  <!-- loop back -->
-  <path d="M 1190 740 Q 1190 820 760 820 Q 530 820 530 745" fill="none" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrow)"/>
-  <text x="810" y="812" fill="#34d399" font-size="8" font-family="JetBrains Mono">weekly rhythm: review → adjust forecast → save (every save kept) → repeat until engagement ends</text>
+  <!-- ══ LEFT nodes ══ -->
+  <div class="node" style="left:198px; top:276px; width:314px;">
+    <div class="n-title">Create the Engagement</div>
+    <div class="n-sub">client · fee · dates · weekly or monthly periods</div>
+  </div>
+  <div class="node" style="left:198px; top:380px; width:314px;">
+    <div class="n-title">Build the Budget</div>
+    <div class="n-sub">Tasks → Resources → hours per period<br>rates prefill · placeholders ("TBD") allowed</div>
+  </div>
+  <div class="node" style="left:198px; top:484px; width:314px;">
+    <div class="n-title">Margin recalculates live</div>
+    <div class="n-sub">revenue · margin % · realization · leverage</div>
+  </div>
+  <div class="node" style="left:198px; top:588px; width:314px; border-width:2.5px;">
+    <div class="n-title">Submit → Leadership approves</div>
+    <div class="n-sub">approval pins the BASELINE 📌 · SAP project created<br>the engagement goes live</div>
+  </div>
 
-  <g>
-    <rect x="70" y="650" width="250" height="100" rx="6" fill="#0f172a"/>
-    <rect x="70" y="650" width="250" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-    <text x="195" y="675" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">OPEN BvA VIEW</text>
-    <text x="195" y="692" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">PMD sees only THEIR engagements</text>
-    <text x="195" y="708" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Strategic Finance sees all</text>
-    <text x="195" y="724" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">grid: Resource × Period</text>
-    <text x="195" y="738" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">rows: Budget | Actuals | Forecast</text>
-  </g>
-  <g>
-    <rect x="390" y="650" width="270" height="100" rx="6" fill="#0f172a"/>
-    <rect x="390" y="650" width="270" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-    <text x="525" y="675" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">EDIT THE FORECAST</text>
-    <text x="525" y="692" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">past = Actuals · future = editable</text>
-    <text x="525" y="708" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">adjust hours · add consultant (rates autofill)</text>
-    <text x="525" y="724" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">remove TBD forecasts · revenue/expense/ETS</text>
-    <text x="525" y="738" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">adjustments (yellow fields in their mockup)</text>
-  </g>
-  <g>
-    <rect x="730" y="650" width="270" height="100" rx="6" fill="#0f172a"/>
-    <rect x="730" y="650" width="270" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-    <text x="865" y="675" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">CALCULATE METRICS</text>
-    <text x="865" y="692" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">Est. Margin = Fcst Revenue − Std Costs</text>
-    <text x="865" y="708" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">− Expenses − ETS − Profit Hurdle</text>
-    <text x="865" y="724" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Std Cost = coefficient × fcst hrs × std cost</text>
-    <text x="865" y="738" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Budget KPIs stored · Forecast KPIs computed</text>
-  </g>
-  <g>
-    <rect x="1070" y="650" width="240" height="100" rx="6" fill="#0f172a"/>
-    <rect x="1070" y="650" width="240" height="100" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
-    <text x="1190" y="675" fill="#e2e8f0" font-size="12" font-weight="700" text-anchor="middle" font-family="JetBrains Mono">DECIDE & ACT</text>
-    <text x="1190" y="692" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">KPIs: Budget | Forecast | Variance</text>
-    <text x="1190" y="708" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">margin % · realization · leverage</text>
-    <text x="1190" y="724" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">restaff? renegotiate? descope?</text>
-    <text x="1190" y="738" fill="#64748b" font-size="8" text-anchor="middle" font-family="JetBrains Mono">save + export to Excel</text>
-  </g>
+  <div class="bullets" style="left:116px; top:682px; width:500px;">
+    <div class="b">Every save kept — checkpoints at submit &amp; approve</div>
+    <div class="b">Rejection loops back to Draft, with a comment</div>
+    <div class="b">Owners see only their engagements. Finance sees all.</div>
+  </div>
 
-  <!-- connector arrows between lanes -->
-  <path d="M 1320 205 L 1320 300 Q 1320 330 1230 360 L 490 418" fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.7" marker-end="url(#arrowAmber)"/>
-  <path d="M 195 530 L 195 648" fill="none" stroke="#34d399" stroke-width="1.5" opacity="0.7" marker-end="url(#arrow)"/>
-  <text x="205" y="545" fill="#64748b" font-size="8" font-family="JetBrains Mono">actuals + budget + coefficient feed the BvA view</text>
+  <div class="hand" style="position:absolute; left:84px; top:235px; font-size:21px; transform:rotate(-5deg);">rejected? back<br>to the drawing<br>board →</div>
 
-  <!-- legend -->
-  <g font-family="JetBrains Mono">
-    <rect x="40" y="900" width="1400" height="56" rx="6" fill="#0f172a" stroke="#1e293b"/>
-    <rect x="60" y="916" width="14" height="14" rx="3" fill="rgba(8,51,68,0.4)" stroke="#22d3ee"/>
-    <text x="82" y="927" fill="#94a3b8" font-size="9">Phase 1 budgeting</text>
-    <rect x="230" y="916" width="14" height="14" rx="3" fill="rgba(6,78,59,0.4)" stroke="#34d399"/>
-    <text x="252" y="927" fill="#94a3b8" font-size="9">Runway calculations / Phase 2</text>
-    <rect x="470" y="916" width="14" height="14" rx="3" fill="rgba(136,19,55,0.4)" stroke="#fb7185"/>
-    <text x="492" y="927" fill="#94a3b8" font-size="9">Approval gate</text>
-    <rect x="620" y="916" width="14" height="14" rx="3" fill="rgba(76,29,149,0.4)" stroke="#a78bfa"/>
-    <text x="642" y="927" fill="#94a3b8" font-size="9">Client database</text>
-    <rect x="790" y="916" width="14" height="14" rx="3" fill="rgba(30,41,59,0.5)" stroke="#94a3b8"/>
-    <text x="812" y="927" fill="#94a3b8" font-size="9">Existing firm systems (untouched)</text>
-    <rect x="1070" y="916" width="14" height="14" rx="3" fill="rgba(120,53,15,0.3)" stroke="#fbbf24"/>
-    <text x="1092" y="927" fill="#94a3b8" font-size="9">Live engagement / decisions</text>
-    <text x="60" y="947" fill="#475569" font-size="8">Prototype: Supabase replaces the client DB · seeded actuals replace the ETL · coefficient seeded per resource</text>
-  </g>
-</svg>
-</div>
+  <!-- ══ RIGHT nodes ══ -->
+  <div class="node" style="left:1088px; top:276px; width:314px;">
+    <div class="n-title">Actuals land daily</div>
+    <div class="n-sub">Intapp → SAP → data lake (existing pipes, untouched)</div>
+  </div>
+  <div class="node" style="left:1088px; top:380px; width:314px;">
+    <div class="n-title">Budget | Actuals | Forecast</div>
+    <div class="n-sub">one grid, per resource per week<br>past = actuals · future = editable forecast</div>
+  </div>
+  <div class="node" style="left:1088px; top:484px; width:314px;">
+    <div class="n-title">Adjust &amp; recalculate</div>
+    <div class="n-sub">forecast hours · add people · revenue adjustments<br>est. margin = revenue − costs − hurdle</div>
+  </div>
+  <div class="node" style="left:1088px; top:588px; width:314px; border-width:2.5px;">
+    <div class="n-title">Decide early</div>
+    <div class="n-sub">KPIs as Budget | Forecast | Variance<br>restaff · renegotiate · descope — in week 2, not week 12</div>
+  </div>
+
+  <div class="bullets" style="left:1104px; top:682px; width:500px;">
+    <div class="b">The Co-CEOs asked to see exactly this screen</div>
+    <div class="b">Their own mockup seeded — same numbers to the penny</div>
+    <div class="b">The month-end Budget Tool is never modified</div>
+  </div>
+
+  <div class="hand" style="position:absolute; right:66px; top:228px; font-size:21px; transform:rotate(4deg); text-align:left;">the weekly<br>rhythm ↓</div>
+
+  <!-- ══ CENTER ══ -->
+  <div class="hand" style="position:absolute; left:648px; top:352px; width:304px; text-align:center; font-size:34px; transform:rotate(-3deg);">same data, live?</div>
+  <div class="mid" style="top:452px;">
+    <div class="mono">Today this picture only exists<br>at month-end close.<br><br>Runway makes it a<br><b>daily</b> picture.</div>
+  </div>
+  <div class="hand" style="position:absolute; left:660px; top:600px; width:280px; text-align:center; font-size:23px; transform:rotate(-2deg);">a margin problem found<br>in week 2 is a fix.<br>found at close, it's<br>just bad news.</div>
+
+  <div class="footer">
+    <div class="l">BUDGET&nbsp;&nbsp;|&nbsp;&nbsp;ACTUALS&nbsp;&nbsp;|&nbsp;&nbsp;FORECAST&nbsp;&nbsp;|&nbsp;&nbsp;MARGIN IN NEAR REAL-TIME</div>
+    <div class="l">SCALETG.COM&nbsp;&nbsp;·&nbsp;&nbsp;RUNWAY PROTOTYPE</div>
+  </div>
 </body>
 </html>
