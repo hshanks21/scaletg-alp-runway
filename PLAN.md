@@ -103,24 +103,25 @@ Create all tables via Drizzle migrations:
 **Core tables:**
 - `engagements` — id, client_name, name, engagement_owner, engagement_type (fixed_fee | hourly), total_fee, agreed_base_fees, contingent_fees, start_date, end_date, period_type (weekly | monthly), currency, business_unit, community, country, status (draft | submitted | approved | rejected | modified), expenses_budget, ets_budget, digital_tools_budget, created_at, updated_at
 - `resource_categories` — id, name (Partner, PMD, Director, Consultant, TBD), sort_order
-- `resources` — id, name, resource_category_id, standard_rate, cost_rate, industry_service_line, region, home_office, is_placeholder (boolean)
+- `category_rates` — id, resource_category_id, region, cost_rate (cost rates held by Category + region per product-decisions, NOT per person)
+- `resources` — id, name, resource_category_id, standard_rate, industry_service_line, region, home_office, is_placeholder (boolean)
 - `tasks` — id, engagement_id, name, estimated_hours, start_date, num_periods, sort_order
 - `allocations` — id, task_id, resource_id, engagement_rate, placeholder_category_id (nullable)
 - `allocation_periods` — id, allocation_id, period_start, period_end, hours
 - `checkpoints` — id, engagement_id, kind (submitted | approved | modified), label, snapshot (JSONB), comment, created_by, created_at
 - `actuals` — id, engagement_id, resource_id, period_start, period_end, hours
 - `forecasts` — id, engagement_id, resource_id, period_start, period_end, hours, created_at, updated_at
-- `revenue_adjustments` — id, engagement_id, agreed_base_fees_adj, contingent_fees_adj, expense_adj, digital_tools_adj, ets_costs_adj, created_at, updated_at
-- `holiday_calendars` — id, location, holiday_date, description (for Ideal Hours demo)
+- Adjustments live as **columns on `engagements`** (agreed_base_fees_adj, contingent_fees_adj, expense_adj, digital_tools_adj, ets_costs_adj) — one row per engagement doesn't justify a separate table + join
 - `profit_hurdle` — id, period_start, period_end, percentage
 
-**Indexes:** engagement_id on tasks, allocations, checkpoints, actuals, forecasts, revenue_adjustments. resource_id on allocations, actuals, forecasts.
+**Indexes:** engagement_id on tasks, allocations, checkpoints, actuals, forecasts. resource_id on allocations, actuals, forecasts.
 
 ### 1.3 — Seed sample data
-Create seed script with 3 demo Engagements:
+Create seed script with 4 demo Engagements:
 1. **Project Phoenix** — Fixed Fee, $2.5M, 6 months (monthly), 3 Tasks, 8 Resources, Approved with Actuals for first 3 months. Shows margin declining from 25% to 18% — the "we need to reforecast" story.
 2. **Operation Atlas** — Fixed Fee, $1.2M, 3 months (weekly), Draft, being built. Shows the budgeting workflow.
 3. **Meridian Advisory** — Fixed Fee, $4M, 12 months (monthly), Approved, Budget vs. Actual with 6 months of Actuals + 6 months of Forecast. Includes revenue adjustments (contingent fees added) and a TBD Placeholder.
+4. **Mockup Replica** — the EXACT engagement from AlixPartners' mockup: Marc Brown (PMD, $1,465/$1,381), TBD Director ($1,115/$1,051), Talmage Corey (Consultant, $575/$542), Christopher Hakim (Director, $1,030/$971). 3 weeks weekly, $60K base + $10K contingent adj, $9K expenses, $10K ETS. **The demo moment: "here's your spreadsheet, live — same numbers to the penny."** Doubles as the calc verification fixture (Margin 12.27%, Realization 94.3%, Staff/PMD 8.03, Below Dir 62.9%).
 
 Seed 15-20 Resources across 4 categories with realistic rates:
 | Category | Standard Rate Range | Engagement Rate Range |
@@ -131,7 +132,6 @@ Seed 15-20 Resources across 4 categories with realistic rates:
 | Consultant (Associate) | $300–$500/hr | $275–$450/hr |
 
 Seed a sample `profit_hurdle` table with quarterly percentages.
-Seed a sample `holiday_calendars` for Americas (US federal holidays).
 
 ### 1.4 — Backend API routes
 | Route | Method | Description |
@@ -177,7 +177,13 @@ Backend service (`calculationEngine.ts`) that computes all KPIs:
 - Standard Cost per Resource = Ideal Hours Coefficient × forecast hours × standard hourly cost
 - Profit Hurdle = Forecasted Revenue × MDM percentage for the period
 - Estimated Margin = Forecasted Revenue − Standard Costs − Forecasted Expenses − Forecasted ETS Costs − Profit Hurdle
-- Estimated Margin % = Estimated Margin ÷ Forecasted Revenue
+- **Est. Total Revenue = Forecasted Revenue + Forecasted Expenses** (expenses are billed to the client)
+- **Estimated Margin % = Estimated Margin ÷ Est. Total Revenue** — verified against the mockup: $9,694 ÷ $79K = 12.27% ✓. Dividing by Forecasted Revenue alone gives 13.8% and would NOT tie to their spreadsheet.
+
+**CRITICAL — stored vs. computed KPIs (verified against the mockup):**
+- The **Budget column** of every KPI comes from the ORIGINAL approved budget header (stored values — e.g. Staff/PMD 8.9, % Below Dir 61.4%), NOT recomputed from the allocation grid (which gives 10.7 / 62.4% — different numbers).
+- Only the **Forecast column** is recomputed live from the grid (8.03 ✓, 62.9% ✓ tie out).
+- Schema: store budget-side KPIs on the engagement/checkpoint at approval time; compute forecast-side on the fly.
 
 **Ideal Hours Coefficient (simplified for prototype):**
 - For the prototype: seed a coefficient value per resource (e.g. 0.85–0.95) rather than calculating from timecards
@@ -194,6 +200,7 @@ Must recalculate on every edit and return in <100ms.
 - Light theme AppLayout with sidebar navigation
 - Routes: `/engagements`, `/engagements/:id`, `/engagements/:id/budget-vs-actual`
 - Supabase Auth (magic link) — simple login page
+- **"View as" user switcher** (header dropdown): Marc Brown (PMD) / Strategic Finance / Approver. Engagement list + visibility filter live — demos the client's #1 functional requirement (Owners see only their engagements, Strategic Finance sees all) without needing their Entra tenant. ~30 min of work.
 
 ### 2.2 — Engagement list page
 - Table with: name, client, owner, status badge, fee, dates, period count
@@ -250,6 +257,7 @@ Key interactions:
 - Expand/collapse Tasks
 - Period columns auto-generate from Engagement Dates + Period Type
 - Periods cut short at Engagement start/end dates
+- **Weeks are Monday–Sunday** (per the mockup: 3/30/26–4/5/26), cut to engagement dates at the ends
 
 ### 2.4 — Live KPI panel
 - Sticky panel that updates on every allocation change
@@ -373,18 +381,20 @@ Variance color coding:
 
 ## Delivery Order
 
+> **The Co-CEOs specifically asked for a demo of Budget vs. Actual** — that's the money screen. It comes BEFORE the approval workflow so a slip never squeezes it.
+
 ```
-Day 1:   Phase 1 (Foundation)     → 1.1 scaffolding → 1.2 schema → 1.3 seed data
-Day 2-3: Phase 1 cont + Phase 2  → 1.4 API routes → 1.5 calc engine → 2.1 app shell → 2.2 list
+Day 1:   Phase 1 (Foundation)     → 1.1 scaffolding → 1.2 schema → 1.3 seed data (incl. Mockup Replica)
+Day 2-3: Phase 1 cont + Phase 2  → 1.4 API routes → 1.5 calc engine (verify vs mockup fixture) → 2.1 app shell → 2.2 list
 Day 3-4: Phase 2 (Hero screen)   → 2.3 Budget editor → 2.4 KPI panel
-Day 5:   Phase 3 (Approval)      → 3.1 status transitions → 3.2 checkpoints
-Day 6:   Phase 4 (BvA)           → 4.1 grid → 4.2 forecast editing → 4.3 adjustments → 4.4 KPIs
-Day 7:   Polish + Demo prep      → Sample data tuning, walkthrough script, edge cases
+Day 4-5: Phase 4 (BvA — the Co-CEO ask) → 4.1 grid → 4.2 forecast editing → 4.3 adjustments → 4.4 KPIs
+Day 6:   Phase 3 (Approval)      → 3.1 status transitions → 3.2 checkpoints (list + simple side-by-side; skip fancy diff highlighting if time is short)
+Day 7:   Polish + Demo prep      → Sample data tuning, walkthrough script, Excel export (stretch), edge cases
 ```
 
-**Critical path:** 1.2 (schema) → 1.4 (API) → 1.5 (calc engine) → 2.3 (Budget editor) → 4.1 (BvA grid)
+**Critical path:** 1.2 (schema) → 1.5 (calc engine, verified against the Mockup Replica) → 2.3 (Budget editor) → 4.1 (BvA grid)
 
-The Budget editor (2.3) is the screen that wins Phase 1. The BvA grid (4.1) is the screen that wins Phase 2. Both must be polished for the demo.
+The Budget editor (2.3) is the screen that wins Phase 1. The BvA grid (4.1) is the screen that wins Phase 2 — and the one the Co-CEOs asked to see. Both must be polished for the demo.
 
 ---
 
@@ -392,16 +402,18 @@ The Budget editor (2.3) is the screen that wins Phase 1. The BvA grid (4.1) is t
 
 | Skip | Why | Production handles it |
 |------|-----|----------------------|
-| Entra ID / Duo auth | Use Supabase magic link | MSAL integration |
+| Entra ID / Duo auth | Use Supabase magic link + "View as" switcher | MSAL integration |
 | SAP ETL integration | Seed sample data | Connect to their data lake |
 | Real Ideal Hours Coefficient calculation | Seed coefficients per resource | Client × TK × Day formula with holidays |
 | Multi-currency | All in USD | FxRate table + conversion |
-| Excel export | Show the data, skip the export | Phase 2 deliverable |
+| "Every save kept" full history | Checkpoints at Submitted/Approved/Modified only | Full save-event log |
 | Coexistence with Budget Tool | Separate database | ADR 0001 same-database |
 | Re-approval threshold automation | Show the concept manually | Configurable threshold |
 | Mobile layout | Desktop only | Desktop only (client requirement) |
-| Holiday calendar computation | Seed holidays | LocationHolidayCalender integration |
+| Holiday calendar computation | Not needed (coefficients seeded) | LocationHolidayCalender integration |
 | Subcontractor handling | Skip SUBCON tables | APTBL_BUDGET_SUBCON integration |
+
+**Promoted from skip list → Day 7 stretch:** Excel export of the BvA grid (explicit BRD requirement, Strategic Finance lives in Excel, ~1 hour with a library). Show it if time allows.
 
 ---
 
