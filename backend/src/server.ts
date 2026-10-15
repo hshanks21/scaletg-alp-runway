@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import engagementRoutes from './routes/engagements';
+import resourceRoutes from './routes/resources';
 
 const app = express();
 app.use(cors());
@@ -11,9 +13,9 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'runway-api' });
 });
 
-// Routes will be mounted here as we build them
-// app.use('/api/engagements', engagementRoutes);
-// app.use('/api/resources', resourceRoutes);
+// Routes
+app.use('/api/engagements', engagementRoutes);
+app.use('/api/resources', resourceRoutes);
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
 app.listen(PORT, () => {
