@@ -1,0 +1,13 @@
+{
+  "name": "scaletg-alp-runway",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Runway — AlixPartners Budget Tool prototype",
+  "scripts": {
+    "dev": "pnpm --parallel --filter './frontend' --filter './backend' run dev",
+    "build": "pnpm --filter './backend' run build && pnpm --filter './frontend' run build"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
