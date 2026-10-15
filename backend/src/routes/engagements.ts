@@ -6,6 +6,7 @@ import {
   actuals, forecasts, checkpoints, profitHurdle,
 } from '../db/schema';
 import { eq, and, sql, asc, desc, gte, lte } from 'drizzle-orm';
+import { calculateKPIs, formatKPIs, type ResourceAllocation, type EngagementFinancials } from '../services/calculationEngine';
 
 const router = Router();
 
@@ -590,6 +591,148 @@ router.patch('/:id/adjustments', async (req, res) => {
     if (!updated) return res.status(404).json({ success: false, error: 'Engagement not found' });
     res.json({ success: true, data: updated });
   } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── GET /api/engagements/:id/kpis — calculate live KPIs ──
+
+router.get('/:id/kpis', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { mode } = req.query; // 'budget' or 'forecast' (default)
+    const calcMode = mode === 'budget' ? 'budget' : 'forecast' as const;
+
+    const [engagement] = await db.select().from(engagements).where(eq(engagements.id, id));
+    if (!engagement) return res.status(404).json({ success: false, error: 'Not found' });
+
+    // Get allocations with resource info + cost rates
+    const allocationRows = await db
+      .select({
+        resourceId: allocations.resourceId,
+        engagementRate: allocations.engagementRate,
+        resourceName: resources.name,
+        standardRate: resources.standardRate,
+        categoryName: resourceCategories.name,
+        isPlaceholder: resources.isPlaceholder,
+        idealHoursCoefficient: resources.idealHoursCoefficient,
+        region: resources.region,
+        resourceCategoryId: resources.resourceCategoryId,
+      })
+      .from(allocations)
+      .innerJoin(tasks, eq(allocations.taskId, tasks.id))
+      .leftJoin(resources, eq(allocations.resourceId, resources.id))
+      .leftJoin(resourceCategories, eq(resources.resourceCategoryId, resourceCategories.id))
+      .where(eq(tasks.engagementId, id));
+
+    // Get cost rates by category + region
+    const costRateRows = await db.select().from(categoryRates);
+    const costRateMap = new Map<string, number>();
+    for (const cr of costRateRows) {
+      costRateMap.set(`${cr.resourceCategoryId}|${cr.region}`, parseFloat(cr.costRate || '0'));
+    }
+
+    // Get hours based on mode
+    let resourceHours: Record<string, number> = {};
+
+    if (calcMode === 'forecast') {
+      // Use forecast hours
+      const forecastRows = await db.select().from(forecasts)
+        .where(eq(forecasts.engagementId, id));
+      for (const f of forecastRows) {
+        resourceHours[f.resourceId] = (resourceHours[f.resourceId] || 0) + parseFloat(f.hours || '0');
+      }
+    }
+
+    // Fall back to budget hours if no forecasts or budget mode
+    if (calcMode === 'budget' || Object.keys(resourceHours).length === 0) {
+      const periodRows = await db
+        .select({
+          resourceId: allocations.resourceId,
+          hours: allocationPeriods.hours,
+        })
+        .from(allocationPeriods)
+        .innerJoin(allocations, eq(allocationPeriods.allocationId, allocations.id))
+        .innerJoin(tasks, eq(allocations.taskId, tasks.id))
+        .where(eq(tasks.engagementId, id));
+
+      resourceHours = {};
+      for (const p of periodRows) {
+        if (p.resourceId) {
+          resourceHours[p.resourceId] = (resourceHours[p.resourceId] || 0) + parseFloat(p.hours || '0');
+        }
+      }
+    }
+
+    // Build ResourceAllocation array
+    const allocs: ResourceAllocation[] = allocationRows.map(a => ({
+      resourceId: a.resourceId || '',
+      resourceName: a.resourceName || 'Unknown',
+      categoryName: a.categoryName || 'Unknown',
+      standardRate: parseFloat(a.standardRate || '0'),
+      engagementRate: parseFloat(a.engagementRate || '0'),
+      costRate: costRateMap.get(`${a.resourceCategoryId}|${a.region || 'Americas'}`) || parseFloat(a.standardRate || '0'),
+      isPlaceholder: a.isPlaceholder || false,
+      idealHoursCoefficient: parseFloat(a.idealHoursCoefficient || '1'),
+      hours: resourceHours[a.resourceId || ''] || 0,
+    }));
+
+    // Financials
+    const financials: EngagementFinancials = {
+      agreedBaseFees: parseFloat(engagement.agreedBaseFees || '0'),
+      contingentFees: parseFloat(engagement.contingentFees || '0'),
+      expensesBudget: parseFloat(engagement.expensesBudget || '0'),
+      etsBudget: parseFloat(engagement.etsBudget || '0'),
+      digitalToolsBudget: parseFloat(engagement.digitalToolsBudget || '0'),
+      agreedBaseFeesAdj: parseFloat(engagement.agreedBaseFeesAdj || '0'),
+      contingentFeesAdj: parseFloat(engagement.contingentFeesAdj || '0'),
+      expenseAdj: parseFloat(engagement.expenseAdj || '0'),
+      digitalToolsAdj: parseFloat(engagement.digitalToolsAdj || '0'),
+      etsCostsAdj: parseFloat(engagement.etsCostsAdj || '0'),
+    };
+
+    // Profit hurdle
+    const hurdles = await db.select().from(profitHurdle);
+    const hurdleEntries = hurdles.map(h => ({
+      periodStart: h.periodStart,
+      periodEnd: h.periodEnd,
+      percentage: parseFloat(h.percentage || '0'),
+    }));
+
+    const kpis = calculateKPIs(allocs, financials, hurdleEntries, calcMode);
+
+    // For BvA: include stored budget KPIs alongside computed forecast KPIs
+    const budgetKPIs = {
+      marginPct: engagement.budgetMarginPct ? parseFloat(engagement.budgetMarginPct) : null,
+      realization: engagement.budgetRealization ? parseFloat(engagement.budgetRealization) : null,
+      staffPmdHours: engagement.budgetStaffPmdHours ? parseFloat(engagement.budgetStaffPmdHours) : null,
+      pctBelowDirector: engagement.budgetPctBelowDirector ? parseFloat(engagement.budgetPctBelowDirector) : null,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        mode: calcMode,
+        forecast: formatKPIs(kpis),
+        budget: budgetKPIs,
+        variance: {
+          marginPct: budgetKPIs.marginPct != null
+            ? (kpis.estimatedMarginPct - budgetKPIs.marginPct) * 100
+            : null,
+          realization: budgetKPIs.realization != null
+            ? (kpis.realization - budgetKPIs.realization) * 100
+            : null,
+          staffPmdHours: budgetKPIs.staffPmdHours != null
+            ? kpis.staffPmdHours - budgetKPIs.staffPmdHours
+            : null,
+          pctBelowDirector: budgetKPIs.pctBelowDirector != null
+            ? (kpis.pctBelowDirector - budgetKPIs.pctBelowDirector) * 100
+            : null,
+        },
+      },
+    });
+  } catch (err: any) {
+    console.error('Error calculating KPIs:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
