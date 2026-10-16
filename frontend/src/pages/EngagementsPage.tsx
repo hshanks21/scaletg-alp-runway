@@ -57,58 +57,69 @@ export function EngagementsPage() {
 
   return (
     <div>
-      {/* Page header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 style={{ fontSize: '16px', fontWeight: 500, lineHeight: 1.3, color: 'var(--text)' }}>Engagements</h1>
-          <p style={{ fontSize: '12px', color: 'var(--faint)', marginTop: '2px' }}>{engagements.length} engagement{engagements.length !== 1 ? 's' : ''}</p>
-        </div>
-        <button
-          style={{
-            background: 'var(--accent-btn)',
-            color: '#fff',
-            fontSize: '12px',
-            padding: '6px 12px',
-            borderRadius: '6px',
-            border: 'none',
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
-        >
-          + New Engagement
-        </button>
-      </div>
-
-      {/* Filter tabs */}
+      {/* Page header card — tabs (centered) | actions */}
       <div
-        className="flex items-center gap-0.5 mb-4"
         style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)',
+          alignItems: 'center',
+          gap: '12px',
           background: 'var(--panel)',
-          borderRadius: '6px',
-          padding: '3px',
           border: '1px solid var(--line)',
-          display: 'inline-flex',
+          borderRadius: '10px',
+          padding: '10px 14px',
+          marginBottom: '12px',
         }}
       >
-        {TABS.map(tab => (
+        {/* Spacer — page is identified by the active sidebar nav item */}
+        <div />
+
+        {/* Filter tabs (centered) */}
+        <div
+          style={{
+            display: 'flex',
+            gap: '2px',
+            padding: '3px',
+            border: '1px solid var(--line)',
+            borderRadius: '9px',
+            background: 'var(--panel)',
+          }}
+        >
+          {TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                fontSize: '12px',
+                padding: '6px 22px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                background: activeTab === tab ? 'var(--raised)' : 'transparent',
+                color: activeTab === tab ? 'var(--text)' : 'var(--muted)',
+                boxShadow: activeTab === tab ? 'inset 0 -2px 0 var(--accent)' : 'none',
+                transition: 'color .15s, background .15s',
+              }}
+            >
+              {tab === 'all' ? 'All' : STATUS_META[tab]?.label || tab}
+            </button>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div style={{ justifySelf: 'end' }}>
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            className="btn-primary"
             style={{
               fontSize: '12px',
-              padding: '6px 22px',
+              padding: '6px 12px',
               borderRadius: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              background: activeTab === tab ? '#1A1E1C' : 'transparent',
-              color: activeTab === tab ? '#E8ECE9' : '#9AA59D',
-              borderBottom: activeTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
-              transition: 'all 0.15s',
+              fontWeight: 500,
             }}
           >
-            {tab === 'all' ? 'All' : STATUS_META[tab]?.label || tab}
+            + New Engagement
           </button>
-        ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -161,9 +172,9 @@ export function EngagementsPage() {
                     <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 500, color: 'var(--text)' }}>{e.name}</td>
                     <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--muted)' }}>{e.clientName}</td>
                     <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--muted)' }}>{e.engagementOwner}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text)', fontFeatureSettings: '"tnum" 1' }}>{formatCurrency(fee)}</td>
+                    <td className="font-data" style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text)' }}>{formatCurrency(fee)}</td>
                     <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--faint)', textTransform: 'capitalize' }}>{e.periodType}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--faint)' }}>{formatDate(e.startDate)} – {formatDate(e.endDate)}</td>
+                    <td className="font-data" style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--faint)' }}>{formatDate(e.startDate)} – {formatDate(e.endDate)}</td>
                     <td style={{ padding: '10px 14px' }}>
                       <span className="flex items-center gap-1.5" style={{ fontSize: '12px', color: 'var(--text)' }}>
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />

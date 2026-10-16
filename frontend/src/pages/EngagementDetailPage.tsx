@@ -91,7 +91,7 @@ export function EngagementDetailPage() {
               {meta.label}
             </span>
             <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
-            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>{formatCurrency(fee)} Fixed Fee</span>
+            <span style={{ fontSize: '12px', color: 'var(--faint)' }}><span className="font-data">{formatCurrency(fee)}</span> Fixed Fee</span>
             <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
             <span style={{ fontSize: '12px', color: 'var(--faint)', textTransform: 'capitalize' }}>{engagement.periodType}</span>
           </div>
@@ -263,6 +263,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                     {alloc.periods?.map((p: any) => (
                       <div
                         key={p.id}
+                        className="font-data"
                         style={{
                           flex: 1,
                           textAlign: 'center',
@@ -270,7 +271,6 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                           background: parseFloat(p.hours) > 0 ? 'rgba(63,168,94,0.08)' : 'transparent',
                           borderRadius: '4px',
                           color: parseFloat(p.hours) > 0 ? '#E8ECE9' : '#7C8780',
-                          fontFeatureSettings: '"tnum" 1',
                         }}
                       >
                         {parseFloat(p.hours) || '—'}
