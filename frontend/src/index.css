@@ -5,39 +5,68 @@
 @tailwind utilities;
 
 :root {
-  /* Runway — The Quiet Greenhouse */
-  --greenhouse-green: #1D8837;
-  --fern-shade: #187430;
-  --sprout: #3FA85E;
-  --night-soil: #0D0F0E;
-  --potting-bench: #141716;
-  --slate-leaf: #1A1E1C;
-  --bench-hover: #1F2321;
-  --mist-text: #E8ECE9;
-  --sage: #9AA59D;
-  --lichen: #848D86;
-  --stone: #7C8780;
-  --hairline: rgba(232, 240, 234, 0.07);
-  --hairline-strong: rgba(232, 240, 234, 0.13);
-  --sprout-wash: rgba(63, 168, 94, 0.12);
-  --sprout-edge: rgba(63, 168, 94, 0.45);
-  --rust: #E0805C;
-  --rust-light: #B4512C;
-  --amber: #D9A441;
-  --heather: #B76BA3;
+  /* Runway — The Quiet Greenhouse (Dark) */
+  --bg: #0D0F0E;
+  --panel: #141716;
+  --raised: #1A1E1C;
+  --hover: #1F2321;
+  --line: rgba(232, 240, 234, 0.07);
+  --line-strong: rgba(232, 240, 234, 0.13);
+  --text: #E8ECE9;
+  --muted: #9AA59D;
+  --faint: #848D86;
+  --accent: #3FA85E;
+  --accent-btn: #1D8837;
+  --accent-btn-hover: #187430;
+  --accent-soft: rgba(63, 168, 94, 0.12);
+  --accent-line: rgba(63, 168, 94, 0.45);
+  --hi: #E0805C;
+  --mid: #3FA85E;
+  --lo: #7C8780;
+  --prog: #D9A441;
+  --rev: #B76BA3;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #F4F6F5;
+  --panel: #FFFFFF;
+  --raised: #F1F4F2;
+  --hover: #EBEFEC;
+  --line: rgba(28, 34, 30, 0.08);
+  --line-strong: rgba(28, 34, 30, 0.15);
+  --text: #1C221E;
+  --muted: #4A544D;
+  --faint: #5E665F;
+  --accent: #1D8837;
+  --accent-btn: #1D8837;
+  --accent-btn-hover: #187430;
+  --accent-soft: rgba(29, 136, 55, 0.09);
+  --accent-line: rgba(29, 136, 55, 0.4);
+  --hi: #B4512C;
+  --mid: #1D8837;
+  --lo: #9AA59D;
+  --prog: #B98419;
+  --rev: #943F80;
+  color-scheme: light;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
   font-family: 'DM Sans', system-ui, sans-serif;
-  background: var(--night-soil);
-  color: var(--mist-text);
+  background: var(--bg);
+  color: var(--text);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+::selection { background: rgba(63, 168, 94, 0.32); color: var(--text); }
+input, textarea { caret-color: var(--accent); }
+*:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
 
 /* Tabular figures for data */
 .font-data {

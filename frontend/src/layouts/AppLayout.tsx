@@ -9,6 +9,18 @@ const DEMO_USERS = [
   { name: 'Approver', role: 'Approver', filter: 'approver' },
 ];
 
+function useTheme() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const stored = localStorage.getItem('runway-theme');
+    return stored === 'light' ? 'light' : 'dark';
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme === 'light' ? 'light' : '';
+    localStorage.setItem('runway-theme', theme);
+  }, [theme]);
+  return { theme, toggle: () => setTheme(t => t === 'dark' ? 'light' : 'dark') };
+}
+
 interface Engagement {
   id: string;
   name: string;
@@ -22,6 +34,7 @@ export function AppLayout() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const location = useLocation();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
     fetch('/api/engagements')
@@ -31,21 +44,21 @@ export function AppLayout() {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ padding: '20px', background: '#0D0F0E' }}>
+    <div className="flex h-screen overflow-hidden" style={{ padding: '20px', background: 'var(--bg)' }}>
       {/* Sidebar */}
       <aside
         className="flex flex-col shrink-0"
         style={{
           width: '210px',
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '14px',
           marginRight: '10px',
           padding: '14px',
-          borderRight: '1px solid rgba(232,240,234,0.07)',
+          borderRight: '1px solid var(--line)',
         }}
       >
         {/* Wordmark */}
-        <div className="mb-6" style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', color: '#E8ECE9' }}>
+        <div className="mb-6" style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', color: 'var(--text)' }}>
           RUNWAY
         </div>
 
@@ -56,7 +69,7 @@ export function AppLayout() {
 
         {/* Engagement list */}
         <div className="flex-1 overflow-y-auto">
-          <div className="mb-2" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', color: '#9AA59D', textTransform: 'uppercase' }}>
+          <div className="mb-2" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--muted)', textTransform: 'uppercase' }}>
             Engagements
           </div>
           <div className="flex flex-col gap-0.5">
@@ -69,8 +82,8 @@ export function AppLayout() {
                   className={({ isActive }) =>
                     `flex items-center justify-between px-2 py-1.5 rounded-md text-data transition-colors ${
                       isActive
-                        ? 'bg-runway-slate-leaf text-runway-mist'
-                        : 'text-runway-sage hover:bg-runway-bench-hover'
+                        ? 'bg-surface-raised text-content'
+                        : 'text-content-muted hover:bg-surface-hover'
                     }`
                   }
                 >
@@ -83,20 +96,20 @@ export function AppLayout() {
       </aside>
 
       {/* Main content */}
-      <div className="flex flex-col flex-1 min-w-0" style={{ background: '#0D0F0E', borderRadius: '14px' }}>
+      <div className="flex flex-col flex-1 min-w-0" style={{ background: 'var(--bg)', borderRadius: '14px' }}>
         {/* Top bar */}
         <header
           className="flex items-center justify-between shrink-0"
           style={{
             height: '48px',
             padding: '0 14px',
-            background: '#141716',
+            background: 'var(--panel)',
             borderRadius: '14px 14px 0 0',
-            borderBottom: '1px solid rgba(232,240,234,0.07)',
+            borderBottom: '1px solid var(--line)',
           }}
         >
           {/* Left — logo */}
-          <div style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', color: '#E8ECE9', width: '160px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', color: 'var(--text)', width: '160px' }}>
             RUNWAY
           </div>
 
@@ -105,14 +118,14 @@ export function AppLayout() {
             <div
               className="flex items-center gap-2"
               style={{
-                background: '#141716',
-                border: '1px solid rgba(232,240,234,0.13)',
+                background: 'var(--panel)',
+                border: '1px solid var(--line-strong)',
                 borderRadius: '8px',
                 padding: '5px 12px',
                 width: '100%',
                 maxWidth: '440px',
                 fontSize: '12px',
-                color: '#848D86',
+                color: 'var(--faint)',
               }}
             >
               <span>🔍</span>
@@ -121,47 +134,55 @@ export function AppLayout() {
             </div>
           </div>
 
-          {/* Right — user switcher */}
-          <div className="relative" style={{ width: '160px', display: 'flex', justifyContent: 'flex-end' }}>
+          {/* Right — theme toggle + user switcher */}
+          <div className="relative flex items-center gap-2" style={{ width: '200px', justifyContent: 'flex-end' }}>
+            <button
+              onClick={toggleTheme}
+              className="flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:bg-surface-hover"
+              style={{ color: 'var(--muted)', fontSize: '14px' }}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            >
+              {theme === 'dark' ? '☀️' : '🌙'}
+            </button>
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-runway-bench-hover"
-              style={{ fontSize: '12px', color: '#E8ECE9' }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-surface-hover"
+              style={{ fontSize: '12px', color: 'var(--text)' }}
             >
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
-                style={{ background: '#1A1E1C', border: '1.5px solid #0D0F0E', color: '#9AA59D' }}>
+                style={{ background: 'var(--raised)', border: '1.5px solid var(--bg)', color: 'var(--muted)' }}>
                 {currentUser.name[0]}
               </span>
               <span>{currentUser.name}</span>
-              <span style={{ fontSize: '10px', color: '#848D86' }}>▾</span>
+              <span style={{ fontSize: '10px', color: 'var(--faint)' }}>▾</span>
             </button>
 
             {userMenuOpen && (
               <div
                 className="absolute top-full right-0 mt-1 z-50"
                 style={{
-                  background: '#141716',
-                  border: '1px solid rgba(232,240,234,0.13)',
+                  background: 'var(--panel)',
+                  border: '1px solid var(--line-strong)',
                   borderRadius: '8px',
                   padding: '4px',
                   minWidth: '180px',
                   boxShadow: '-16px 0 40px rgba(0,0,0,.4)',
                 }}
               >
-                <div className="px-3 py-1.5" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', color: '#9AA59D', textTransform: 'uppercase' }}>
+                <div className="px-3 py-1.5" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--muted)', textTransform: 'uppercase' }}>
                   View as
                 </div>
                 {DEMO_USERS.map(u => (
                   <button
                     key={u.name}
                     onClick={() => { setCurrentUser(u); setUserMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 rounded-sm transition-colors hover:bg-runway-bench-hover"
+                    className="w-full text-left px-3 py-1.5 rounded-sm transition-colors hover:bg-surface-hover"
                     style={{
                       fontSize: '12px',
                       color: u.name === currentUser.name ? '#3FA85E' : '#E8ECE9',
                     }}
                   >
-                    {u.name} <span style={{ color: '#848D86' }}>({u.role})</span>
+                    {u.name} <span style={{ color: 'var(--faint)' }}>({u.role})</span>
                   </button>
                 ))}
               </div>
@@ -184,8 +205,8 @@ function SidebarItem({ to, label, active }: { to: string; label: string; active:
       to={to}
       className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors ${
         active
-          ? 'bg-runway-slate-leaf text-runway-mist'
-          : 'text-runway-sage hover:bg-runway-bench-hover'
+          ? 'bg-surface-raised text-content'
+          : 'text-content-muted hover:bg-surface-hover'
       }`}
       style={{ fontSize: '12.5px' }}
     >

@@ -51,11 +51,11 @@ export function EngagementDetailPage() {
   }, [id]);
 
   if (loading) {
-    return <div style={{ padding: '40px', textAlign: 'center', color: '#848D86', fontSize: '12px' }}>Loading...</div>;
+    return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>Loading...</div>;
   }
 
   if (!engagement) {
-    return <div style={{ padding: '40px', textAlign: 'center', color: '#E0805C', fontSize: '12px' }}>Engagement not found.</div>;
+    return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--hi)', fontSize: '12px' }}>Engagement not found.</div>;
   }
 
   const fee = parseFloat(engagement.agreedBaseFees || '0') + parseFloat(engagement.contingentFees || '0');
@@ -73,27 +73,27 @@ export function EngagementDetailPage() {
       <div
         className="flex items-center justify-between mb-4"
         style={{
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '10px',
           padding: '14px 20px',
-          border: '1px solid rgba(232,240,234,0.07)',
+          border: '1px solid var(--line)',
         }}
       >
         <div>
           <div className="flex items-center gap-3">
-            <h1 style={{ fontSize: '16px', fontWeight: 500, color: '#E8ECE9' }}>{engagement.name}</h1>
-            <span style={{ fontSize: '12px', color: '#848D86' }}>·</span>
-            <span style={{ fontSize: '12px', color: '#9AA59D' }}>{engagement.clientName}</span>
+            <h1 style={{ fontSize: '16px', fontWeight: 500, color: 'var(--text)' }}>{engagement.name}</h1>
+            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{engagement.clientName}</span>
           </div>
           <div className="flex items-center gap-3 mt-1">
-            <span className="flex items-center gap-1.5" style={{ fontSize: '12px', color: '#E8ECE9' }}>
+            <span className="flex items-center gap-1.5" style={{ fontSize: '12px', color: 'var(--text)' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
               {meta.label}
             </span>
-            <span style={{ fontSize: '12px', color: '#848D86' }}>·</span>
-            <span style={{ fontSize: '12px', color: '#848D86' }}>{formatCurrency(fee)} Fixed Fee</span>
-            <span style={{ fontSize: '12px', color: '#848D86' }}>·</span>
-            <span style={{ fontSize: '12px', color: '#848D86', textTransform: 'capitalize' }}>{engagement.periodType}</span>
+            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
+            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>{formatCurrency(fee)} Fixed Fee</span>
+            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
+            <span style={{ fontSize: '12px', color: 'var(--faint)', textTransform: 'capitalize' }}>{engagement.periodType}</span>
           </div>
         </div>
 
@@ -102,7 +102,7 @@ export function EngagementDetailPage() {
           {engagement.status === 'draft' && (
             <button
               style={{
-                background: '#1D8837',
+                background: 'var(--accent-btn)',
                 color: '#fff',
                 fontSize: '12px',
                 padding: '6px 12px',
@@ -118,7 +118,7 @@ export function EngagementDetailPage() {
             <>
               <button
                 style={{
-                  background: '#1D8837',
+                  background: 'var(--accent-btn)',
                   color: '#fff',
                   fontSize: '12px',
                   padding: '6px 12px',
@@ -132,11 +132,11 @@ export function EngagementDetailPage() {
               <button
                 style={{
                   background: 'transparent',
-                  color: '#E0805C',
+                  color: 'var(--hi)',
                   fontSize: '12px',
                   padding: '6px 12px',
                   borderRadius: '6px',
-                  border: '1px solid rgba(232,240,234,0.13)',
+                  border: '1px solid var(--line-strong)',
                   cursor: 'pointer',
                 }}
               >
@@ -151,10 +151,10 @@ export function EngagementDetailPage() {
       <div
         className="flex items-center gap-0.5 mb-5"
         style={{
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '6px',
           padding: '3px',
-          border: '1px solid rgba(232,240,234,0.07)',
+          border: '1px solid var(--line)',
           display: 'inline-flex',
         }}
       >
@@ -170,7 +170,7 @@ export function EngagementDetailPage() {
               cursor: 'pointer',
               background: activeTab === tab.key ? '#1A1E1C' : 'transparent',
               color: activeTab === tab.key ? '#E8ECE9' : '#9AA59D',
-              borderBottom: activeTab === tab.key ? '2px solid #3FA85E' : '2px solid transparent',
+              borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
               transition: 'all 0.15s',
             }}
           >
@@ -195,16 +195,16 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
       {/* KPI summary line */}
       <div
         style={{
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '10px',
           padding: '12px 20px',
-          border: '1px solid rgba(232,240,234,0.07)',
+          border: '1px solid var(--line)',
           marginBottom: '14px',
           fontSize: '12px',
-          color: '#9AA59D',
+          color: 'var(--muted)',
         }}
       >
-        <span style={{ fontWeight: 500, color: '#E8ECE9' }}>
+        <span style={{ fontWeight: 500, color: 'var(--text)' }}>
           {engagement.tasks?.length || 0} tasks
         </span>
         {' · '}
@@ -215,28 +215,28 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
       {/* Tasks + Allocations */}
       <div
         style={{
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '10px',
-          border: '1px solid rgba(232,240,234,0.07)',
+          border: '1px solid var(--line)',
           overflow: 'hidden',
         }}
       >
         {(!engagement.tasks || engagement.tasks.length === 0) ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#848D86', fontSize: '12px' }}>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>
             No tasks yet. Click "+ Add Task" to start building the budget.
           </div>
         ) : (
           engagement.tasks.map((task: any) => (
-            <div key={task.id} style={{ borderBottom: '1px solid rgba(232,240,234,0.07)' }}>
+            <div key={task.id} style={{ borderBottom: '1px solid var(--line)' }}>
               {/* Task header */}
               <div
                 className="flex items-center justify-between"
-                style={{ padding: '10px 20px', background: '#1A1E1C' }}
+                style={{ padding: '10px 20px', background: 'var(--raised)' }}
               >
                 <div className="flex items-center gap-2">
-                  <span style={{ fontSize: '12px', color: '#3FA85E' }}>▼</span>
-                  <span style={{ fontSize: '12px', fontWeight: 500, color: '#E8ECE9' }}>{task.name}</span>
-                  <span style={{ fontSize: '11px', color: '#848D86' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--accent)' }}>▼</span>
+                  <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)' }}>{task.name}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--faint)' }}>
                     (est: {task.estimatedHours || 0}h → alloc: {task.allocatedHours?.toFixed(0) || 0}h)
                   </span>
                 </div>
@@ -249,13 +249,13 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                   className="flex items-center"
                   style={{
                     padding: '8px 20px 8px 40px',
-                    borderBottom: '1px solid rgba(232,240,234,0.04)',
+                    borderBottom: '1px solid var(--line)',
                     fontSize: '12px',
                   }}
                 >
-                  <div style={{ width: '200px', color: '#E8ECE9' }}>
+                  <div style={{ width: '200px', color: 'var(--text)' }}>
                     {alloc.resourceName || 'Unknown'}
-                    <div style={{ fontSize: '11px', color: '#848D86' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--faint)' }}>
                       {alloc.categoryName} · ${parseFloat(alloc.standardRate || 0).toLocaleString()} std / ${parseFloat(alloc.engagementRate || 0).toLocaleString()} eng
                     </div>
                   </div>
@@ -282,7 +282,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
 
               {/* Add Resource */}
               <div style={{ padding: '6px 20px 6px 40px' }}>
-                <button style={{ fontSize: '11px', color: '#3FA85E', background: 'none', border: 'none', cursor: 'pointer' }}>
+                <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>
                   + Add Resource
                 </button>
               </div>
@@ -291,8 +291,8 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
         )}
 
         {/* Add Task */}
-        <div style={{ padding: '10px 20px', borderTop: '1px dashed rgba(232,240,234,0.07)' }}>
-          <button style={{ fontSize: '11px', color: '#3FA85E', background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div style={{ padding: '10px 20px', borderTop: '1px dashed var(--line)' }}>
+          <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>
             + Add Task
           </button>
         </div>
@@ -307,18 +307,18 @@ function BvaView({ engagementId }: { engagementId: string }) {
   return (
     <div
       style={{
-        background: '#141716',
+        background: 'var(--panel)',
         borderRadius: '10px',
         padding: '40px',
-        border: '1px solid rgba(232,240,234,0.07)',
+        border: '1px solid var(--line)',
         textAlign: 'center',
-        color: '#848D86',
+        color: 'var(--faint)',
         fontSize: '12px',
       }}
     >
       Budget vs. Actual view will render here.
       <br />
-      <span style={{ color: '#9AA59D', fontSize: '11px' }}>Resource × Period grid with Budget / Actuals / Forecast rows</span>
+      <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Resource × Period grid with Budget / Actuals / Forecast rows</span>
     </div>
   );
 }
@@ -329,18 +329,18 @@ function CheckpointsView({ engagementId }: { engagementId: string }) {
   return (
     <div
       style={{
-        background: '#141716',
+        background: 'var(--panel)',
         borderRadius: '10px',
         padding: '40px',
-        border: '1px solid rgba(232,240,234,0.07)',
+        border: '1px solid var(--line)',
         textAlign: 'center',
-        color: '#848D86',
+        color: 'var(--faint)',
         fontSize: '12px',
       }}
     >
       Checkpoints will render here.
       <br />
-      <span style={{ color: '#9AA59D', fontSize: '11px' }}>Submitted / Approved / Modified snapshots with comparison</span>
+      <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Submitted / Approved / Modified snapshots with comparison</span>
     </div>
   );
 }

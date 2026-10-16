@@ -60,12 +60,12 @@ export function EngagementsPage() {
       {/* Page header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 style={{ fontSize: '16px', fontWeight: 500, lineHeight: 1.3, color: '#E8ECE9' }}>Engagements</h1>
-          <p style={{ fontSize: '12px', color: '#848D86', marginTop: '2px' }}>{engagements.length} engagement{engagements.length !== 1 ? 's' : ''}</p>
+          <h1 style={{ fontSize: '16px', fontWeight: 500, lineHeight: 1.3, color: 'var(--text)' }}>Engagements</h1>
+          <p style={{ fontSize: '12px', color: 'var(--faint)', marginTop: '2px' }}>{engagements.length} engagement{engagements.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           style={{
-            background: '#1D8837',
+            background: 'var(--accent-btn)',
             color: '#fff',
             fontSize: '12px',
             padding: '6px 12px',
@@ -83,10 +83,10 @@ export function EngagementsPage() {
       <div
         className="flex items-center gap-0.5 mb-4"
         style={{
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '6px',
           padding: '3px',
-          border: '1px solid rgba(232,240,234,0.07)',
+          border: '1px solid var(--line)',
           display: 'inline-flex',
         }}
       >
@@ -102,7 +102,7 @@ export function EngagementsPage() {
               cursor: 'pointer',
               background: activeTab === tab ? '#1A1E1C' : 'transparent',
               color: activeTab === tab ? '#E8ECE9' : '#9AA59D',
-              borderBottom: activeTab === tab ? '2px solid #3FA85E' : '2px solid transparent',
+              borderBottom: activeTab === tab ? '2px solid var(--accent)' : '2px solid transparent',
               transition: 'all 0.15s',
             }}
           >
@@ -114,20 +114,20 @@ export function EngagementsPage() {
       {/* Table */}
       <div
         style={{
-          background: '#141716',
+          background: 'var(--panel)',
           borderRadius: '10px',
-          border: '1px solid rgba(232,240,234,0.07)',
+          border: '1px solid var(--line)',
           overflow: 'hidden',
         }}
       >
         {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#848D86', fontSize: '12px' }}>Loading...</div>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>Loading...</div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#848D86', fontSize: '12px' }}>No engagements found.</div>
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>No engagements found.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid rgba(232,240,234,0.07)' }}>
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
                 {['Engagement', 'Client', 'Owner', 'Fee', 'Period', 'Dates', 'Status'].map(h => (
                   <th
                     key={h}
@@ -137,7 +137,7 @@ export function EngagementsPage() {
                       fontWeight: 600,
                       letterSpacing: '0.05em',
                       textTransform: 'uppercase',
-                      color: '#848D86',
+                      color: 'var(--faint)',
                       textAlign: 'left',
                     }}
                   >
@@ -154,18 +154,18 @@ export function EngagementsPage() {
                   <tr
                     key={e.id}
                     onClick={() => navigate(`/engagements/${e.id}`)}
-                    style={{ borderBottom: '1px solid rgba(232,240,234,0.07)', cursor: 'pointer', transition: 'background 0.1s' }}
-                    onMouseEnter={ev => (ev.currentTarget.style.background = '#1F2321')}
+                    style={{ borderBottom: '1px solid var(--line)', cursor: 'pointer', transition: 'background 0.1s' }}
+                    onMouseEnter={ev => (ev.currentTarget.style.background = 'var(--hover)')}
                     onMouseLeave={ev => (ev.currentTarget.style.background = 'transparent')}
                   >
-                    <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 500, color: '#E8ECE9' }}>{e.name}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: '#9AA59D' }}>{e.clientName}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: '#9AA59D' }}>{e.engagementOwner}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: '#E8ECE9', fontFeatureSettings: '"tnum" 1' }}>{formatCurrency(fee)}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: '#848D86', textTransform: 'capitalize' }}>{e.periodType}</td>
-                    <td style={{ padding: '10px 14px', fontSize: '12px', color: '#848D86' }}>{formatDate(e.startDate)} – {formatDate(e.endDate)}</td>
+                    <td style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 500, color: 'var(--text)' }}>{e.name}</td>
+                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--muted)' }}>{e.clientName}</td>
+                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--muted)' }}>{e.engagementOwner}</td>
+                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text)', fontFeatureSettings: '"tnum" 1' }}>{formatCurrency(fee)}</td>
+                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--faint)', textTransform: 'capitalize' }}>{e.periodType}</td>
+                    <td style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--faint)' }}>{formatDate(e.startDate)} – {formatDate(e.endDate)}</td>
                     <td style={{ padding: '10px 14px' }}>
-                      <span className="flex items-center gap-1.5" style={{ fontSize: '12px', color: '#E8ECE9' }}>
+                      <span className="flex items-center gap-1.5" style={{ fontSize: '12px', color: 'var(--text)' }}>
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
                         {meta.label}
                       </span>

@@ -7,30 +7,35 @@ export default {
         sans: ['DM Sans', 'system-ui', 'sans-serif'],
       },
       colors: {
-        runway: {
-          green: '#1D8837',
-          fern: '#187430',
-          sprout: '#3FA85E',
-          'night-soil': '#0D0F0E',
-          'potting-bench': '#141716',
-          'slate-leaf': '#1A1E1C',
-          'bench-hover': '#1F2321',
-          mist: '#E8ECE9',
-          sage: '#9AA59D',
-          lichen: '#848D86',
-          stone: '#7C8780',
-          rust: '#E0805C',
-          'rust-light': '#B4512C',
-          amber: '#D9A441',
-          heather: '#B76BA3',
+        // Semantic tokens — adapt to dark/light via CSS vars
+        surface: {
+          bg: 'var(--bg)',
+          panel: 'var(--panel)',
+          raised: 'var(--raised)',
+          hover: 'var(--hover)',
         },
-        hairline: {
-          DEFAULT: 'rgba(232, 240, 234, 0.07)',
-          strong: 'rgba(232, 240, 234, 0.13)',
+        border: {
+          line: 'var(--line)',
+          strong: 'var(--line-strong)',
         },
-        sprout: {
-          wash: 'rgba(63, 168, 94, 0.12)',
-          edge: 'rgba(63, 168, 94, 0.45)',
+        content: {
+          DEFAULT: 'var(--text)',
+          muted: 'var(--muted)',
+          faint: 'var(--faint)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          btn: 'var(--accent-btn)',
+          'btn-hover': 'var(--accent-btn-hover)',
+          soft: 'var(--accent-soft)',
+          line: 'var(--accent-line)',
+        },
+        status: {
+          hi: 'var(--hi)',
+          mid: 'var(--mid)',
+          lo: 'var(--lo)',
+          prog: 'var(--prog)',
+          rev: 'var(--rev)',
         },
       },
       borderRadius: {
