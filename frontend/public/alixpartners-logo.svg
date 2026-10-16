@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" fill="none">
+  <!-- AlixPartners iconic green "A" mark -->
+  <g>
+    <!-- The geometric "A" — two angled strokes forming a triangular A shape -->
+    <path d="M4 32 L16 6 L20 6 L32 32 L27 32 L24.5 26 L11.5 26 L9 32 Z M13 22 L23 22 L18 10 Z" fill="#1D8837"/>
+  </g>
+  <!-- Wordmark: "lixPartners" in clean sans-serif -->
+  <text x="38" y="28" font-family="DM Sans, Helvetica Neue, Arial, sans-serif" font-size="18" font-weight="500" fill="#E8ECE9" letter-spacing="0.02em">
+    <tspan fill="#1D8837">A</tspan>lix<tspan font-weight="600">Partners</tspan>
+  </text>
+</svg>
