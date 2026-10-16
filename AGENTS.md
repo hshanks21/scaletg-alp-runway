@@ -19,7 +19,7 @@
 - Drizzle ORM for all database access — no raw SQL in routes.
 - Frontend: React functional components, hooks, ShadCN primitives.
 - **Use domain terms from CONTEXT.md** in code, variable names, types, and UI labels. This is non-negotiable.
-- Light theme — this is a corporate financial tool, NOT a dark dev dashboard.
+- Dark theme — follow DESIGN.md "Quiet Greenhouse" aesthetic exactly. Green only for alive things.
 
 ## Testing & verification
 - Backend: verify API responses with curl or test scripts.
@@ -27,7 +27,7 @@
 - Profitability calculations: verify against the sample data expectations.
 
 ## Guardrails (do NOT)
-- Do NOT use dark theme colors. This is a light, professional UI.
+- Do NOT use light theme colors. Follow DESIGN.md dark "Quiet Greenhouse" palette.
 - Do NOT use the wrong domain terms (see CONTEXT.md _Avoid_ lists).
 - Do NOT build auth beyond Supabase magic link — Entra ID is production scope.
 - Do NOT build SAP integration — seed sample data instead.

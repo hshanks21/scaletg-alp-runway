@@ -12,6 +12,35 @@ Runway is a prototype for AlixPartners' Budget Tool modernization. It demonstrat
 
 ---
 
+## Dev Server Ports
+
+Each worker has unique ports in their `.env`. **Read your `.env` to find your assigned ports:**
+
+```bash
+grep -E 'PORT|VITE' .env
+```
+
+| Env Var | What | Example |
+|---------|------|---------|
+| `PORT` | Express backend port | 5401, 5402, 5403 |
+| `VITE_PORT` | Vite frontend dev server port | 5301, 5302, 5303 |
+| `VITE_BACKEND_PORT` | Backend port for Vite proxy | Same as PORT |
+
+**Start both servers for development:**
+```bash
+# Terminal 1 — backend
+cd backend && npx tsx src/server.ts
+
+# Terminal 2 — frontend
+cd frontend && npx vite --host 0.0.0.0
+```
+
+Vite reads `VITE_PORT` from the root `.env` and proxies `/api` to `localhost:$VITE_BACKEND_PORT`. The backend reads `PORT` from `backend/.env`.
+
+**Do NOT hardcode ports.** Always read from `.env`.
+
+---
+
 ## Quick Orientation
 
 ```
