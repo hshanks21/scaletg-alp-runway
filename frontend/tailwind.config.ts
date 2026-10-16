@@ -7,7 +7,7 @@ export default {
         sans: ['DM Sans', 'system-ui', 'sans-serif'],
       },
       colors: {
-        grove: {
+        runway: {
           green: '#1D8837',
           fern: '#187430',
           sprout: '#3FA85E',

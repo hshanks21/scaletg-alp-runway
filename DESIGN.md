@@ -141,7 +141,7 @@ components:
     padding: "0 7px"
 ---
 
-# Design System: Grove
+# Design System: Runway
 
 ## Overview
 
@@ -211,7 +211,7 @@ A restrained, near-monochrome charcoal palette with one living accent (green) an
 - **Body** (400, 14px, 1.5): the base size for the app shell, nav items (12.5px in the sidebar) and the description field.
 - **Data** (400, 12px, tabular figures): table cells, list rows, buttons, inputs, chips and legend items. Numbers align in columns.
 - **Label** (600, 11px, 0.05em tracking, uppercase): section titles ("OVERDUE", "DETAILS"), column headers and field labels in the detail panel.
-- **Wordmark** (600, 13px, 0.08em tracking, uppercase): the GROVE logotype only.
+- **Wordmark** (600, 13px, 0.08em tracking, uppercase): the RUNWAY logotype only.
 
 ### Named Rules
 **The 11px Floor Rule.** No functional text is ever smaller than 11px. That includes avatar initials, badges, column headers, calendar events and timeline labels.

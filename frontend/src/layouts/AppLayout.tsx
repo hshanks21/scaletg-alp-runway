@@ -69,8 +69,8 @@ export function AppLayout() {
                   className={({ isActive }) =>
                     `flex items-center justify-between px-2 py-1.5 rounded-md text-data transition-colors ${
                       isActive
-                        ? 'bg-grove-slate-leaf text-grove-mist'
-                        : 'text-grove-sage hover:bg-grove-bench-hover'
+                        ? 'bg-runway-slate-leaf text-runway-mist'
+                        : 'text-runway-sage hover:bg-runway-bench-hover'
                     }`
                   }
                 >
@@ -125,7 +125,7 @@ export function AppLayout() {
           <div className="relative" style={{ width: '160px', display: 'flex', justifyContent: 'flex-end' }}>
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-grove-bench-hover"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-runway-bench-hover"
               style={{ fontSize: '12px', color: '#E8ECE9' }}
             >
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
@@ -155,7 +155,7 @@ export function AppLayout() {
                   <button
                     key={u.name}
                     onClick={() => { setCurrentUser(u); setUserMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 rounded-sm transition-colors hover:bg-grove-bench-hover"
+                    className="w-full text-left px-3 py-1.5 rounded-sm transition-colors hover:bg-runway-bench-hover"
                     style={{
                       fontSize: '12px',
                       color: u.name === currentUser.name ? '#3FA85E' : '#E8ECE9',
@@ -184,8 +184,8 @@ function SidebarItem({ to, label, active }: { to: string; label: string; active:
       to={to}
       className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors ${
         active
-          ? 'bg-grove-slate-leaf text-grove-mist'
-          : 'text-grove-sage hover:bg-grove-bench-hover'
+          ? 'bg-runway-slate-leaf text-runway-mist'
+          : 'text-runway-sage hover:bg-runway-bench-hover'
       }`}
       style={{ fontSize: '12.5px' }}
     >
