@@ -6,6 +6,7 @@ description: A calm, dark task and project dashboard where green marks only what
 colors:
   greenhouse-green: "#1D8837"
   fern-shade: "#187430"
+  pine: "#135E27"
   sprout: "#3FA85E"
   night-soil: "#0D0F0E"
   potting-bench: "#141716"
@@ -32,33 +33,33 @@ colors:
   white: "#FFFFFF"
 typography:
   headline:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 500
     lineHeight: 1.3
   summary:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "15px"
     fontWeight: 400
     lineHeight: 1.4
   body:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "14px"
     fontWeight: 400
     lineHeight: 1.5
   data:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Space Grotesk, Inter, sans-serif"
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.4
     fontFeature: "\"tnum\" 1"
   label:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "11px"
     fontWeight: 600
     letterSpacing: "0.05em"
   wordmark:
-    fontFamily: "DM Sans, system-ui, sans-serif"
+    fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "13px"
     fontWeight: 600
     letterSpacing: "0.08em"
@@ -79,13 +80,13 @@ spacing:
   xxl: "20px"
 components:
   button-primary:
-    backgroundColor: "{colors.greenhouse-green}"
+    backgroundColor: "{colors.fern-shade}"
     textColor: "{colors.white}"
     typography: "{typography.data}"
     rounded: "{rounded.sm}"
     padding: "6px 12px"
   button-primary-hover:
-    backgroundColor: "{colors.fern-shade}"
+    backgroundColor: "{colors.pine}"
     textColor: "{colors.white}"
   button-secondary:
     backgroundColor: "transparent"
@@ -160,15 +161,16 @@ Both themes share the same rules. Dark is the default; the light theme swaps soi
 - Flat surfaces separated by hairlines and tone, never shadows at rest
 - Neutral chips with small colored dots for priority and status
 - Detail panel and filters revealed on demand; nothing permanent that isn't always needed
-- One typeface (DM Sans) with a tight scale and an 11px floor
+- Two typefaces with a tight scale and an 11px floor: Inter for the interface, Space Grotesk for data
 
 ## Colors
 
 A restrained, near-monochrome charcoal palette with one living accent (green) and one warning accent (rust); every other hue is a small status dot.
 
 ### Primary
-- **Greenhouse Green** (`greenhouse-green`): fill for primary buttons ("+ Add task", "Create task") with white text (4.5:1). In the light theme it is also the accent for text, checks and underlines.
-- **Fern Shade** (`fern-shade`): hover and pressed state for Greenhouse Green fills.
+- **Greenhouse Green** (`greenhouse-green`): the brand green — the logo mark, and the light-theme accent for text, checks and underlines. Too bright for filled buttons on dark surfaces.
+- **Fern Shade** (`fern-shade`): fill for primary buttons ("+ Add task", "Create task") with white text.
+- **Pine** (`pine`): hover and pressed state for primary buttons.
 - **Sprout** (`sprout`): the accent on dark surfaces. Used for the active-tab underline, completed checkmarks, the "Done" segment of the status bar, progress fills, the timeline's Today line, focus rings and link buttons. It reads 6:1 on panels.
 - **Sprout Wash** and **Sprout Edge** (`sprout-wash`, `sprout-edge`): the selected-task fill and its 1px outline, selected member chips, and the focus halo around inputs.
 
@@ -201,17 +203,18 @@ A restrained, near-monochrome charcoal palette with one living accent (green) an
 ## Typography
 
 **Display Font:** none. The system has no display face.
-**Body Font:** DM Sans (with system-ui, sans-serif)
+**Body Font:** Inter (with system-ui, sans-serif)
+**Data Font:** Space Grotesk (numbers, fees, hours, dates)
 
-**Character:** One well-tuned geometric sans carries everything: headings, labels, data and buttons. Hierarchy comes from size and weight steps, plus uppercase tracked labels for section titles, never from a second family.
+**Character:** Two typefaces, two jobs. Inter carries the interface — headings, labels, body and buttons. Space Grotesk handles data — numbers, fees, hours and dates — in tabular figures. Hierarchy comes from size and weight steps, plus uppercase tracked labels for section titles.
 
 ### Hierarchy
 - **Headline** (500, 16px, 1.3): project names, page titles ("Dashboard", "Activity"), the task title in the detail panel and dialog titles.
 - **Summary** (400, 15px, 1.4): the one-line Overview summary ("4 of 11 done · 2 overdue · …"); the leading fact is bolded to 500 in Mist Text.
 - **Body** (400, 14px, 1.5): the base size for the app shell, nav items (12.5px in the sidebar) and the description field.
-- **Data** (400, 12px, tabular figures): table cells, list rows, buttons, inputs, chips and legend items. Numbers align in columns.
+- **Data** (Space Grotesk, 400, 12px, tabular figures): table cells, list rows, buttons, inputs, chips and legend items. Numbers align in columns.
 - **Label** (600, 11px, 0.05em tracking, uppercase): section titles ("OVERDUE", "DETAILS"), column headers and field labels in the detail panel.
-- **Wordmark** (600, 13px, 0.08em tracking, uppercase): the RUNWAY logotype only.
+- **Wordmark** (600, 13px, 0.08em tracking, uppercase): reserved for a text logotype. The app shell currently shows the 40px logo mark alone, no text wordmark.
 
 ### Named Rules
 **The 11px Floor Rule.** No functional text is ever smaller than 11px. That includes avatar initials, badges, column headers, calendar events and timeline labels.
@@ -249,7 +252,7 @@ RUNWAY is flat. Depth comes from tonal steps (Night Soil → Potting Bench → S
 - Dialogs, which sit over a `rgba(0,0,0,.6)` backdrop.
 
 ### Named Rules
-**The Flat-By-Default Rule.** Surfaces are flat at rest. No drop shadows on cards, buttons or chips, no glows, no gradients and no glass blur.
+**The Flat-By-Default Rule.** Surfaces are flat at rest. No drop shadows on cards, buttons or chips, no glows, no gradients and no glass blur. The sole exception: primary buttons cast a subtle `0 1px 3px rgba(0,0,0,.25)` shadow on hover, as a hover-only affordance — never at rest.
 
 **The No Side-Stripe Rule.** Selection and emphasis never use a colored left or right border thicker than 1px. A selected row gets Sprout Wash with a full 1px Sprout Edge outline; an active nav item gets a tonal fill and a green icon.
 
@@ -271,7 +274,7 @@ Calm and precise: flat fills, hairline edges and small radii, with state shown b
 
 ### Buttons
 - **Shape:** gently rounded (6px; 7–8px for dialog buttons).
-- **Primary:** Greenhouse Green fill with white text (12px). There is one per area: "+ Add task", "Create task".
+- **Primary:** Fern Shade fill with white text (12px), darkening to Pine with a subtle `0 1px 3px rgba(0,0,0,.25)` shadow on hover. There is one per area: "+ Add task", "Create task".
 - **Secondary:** transparent with a Hairline Strong outline and Mist Text ("Filters", "Cancel", "Mark done"). Hover fills with Bench Hover. When a filter is active, the outline shifts to Sprout Edge and the text to Sprout.
 - **Danger:** a Rust outline with Rust text in panels ("Delete task"), or a solid `rust-light` fill with white text as the confirm button in destructive dialogs ("Delete project", "Reset data"). The label always names the action.
 - **Icon buttons:** 28px square and transparent, with Bench Hover on hover. Every icon button has an aria-label (close, previous or next month).

@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { Search, Briefcase } from 'lucide-react';
 
 // Simulated user roles for the "View as" switcher
 const DEMO_USERS = [
@@ -18,7 +19,7 @@ function useTheme() {
     document.documentElement.dataset.theme = theme === 'light' ? 'light' : '';
     localStorage.setItem('runway-theme', theme);
   }, [theme]);
-  return { theme, toggle: () => setTheme(t => t === 'dark' ? 'light' : 'dark') };
+  return { theme, toggle: () => setTheme(t => (t === 'dark' ? 'light' : 'dark')) };
 }
 
 interface Engagement {
@@ -43,174 +44,256 @@ export function AppLayout() {
       .catch(() => {});
   }, []);
 
+  const sidebarActive = location.pathname === '/' || location.pathname.startsWith('/engagements');
+
   return (
-    <div className="flex h-screen overflow-hidden" style={{ padding: '20px', background: 'var(--bg)' }}>
-      {/* Sidebar */}
-      <aside
-        className="flex flex-col shrink-0"
+    /* .sky — radial glow, page padding */
+    <div
+      style={{
+        position: 'relative',
+        padding: '20px',
+        height: '100vh',
+        background: 'radial-gradient(900px 500px at 100% 0%, rgba(29,136,55,.07), transparent 65%)',
+      }}
+    >
+      {/* .app — bordered, rounded shell */}
+      <div
         style={{
-          width: '210px',
-          background: 'var(--panel)',
+          position: 'relative',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          border: '1px solid var(--line)',
           borderRadius: '14px',
-          marginRight: '10px',
+          background: 'var(--bg)',
           padding: '14px',
-          borderRight: '1px solid var(--line)',
         }}
       >
-        {/* Wordmark */}
-        <div className="mb-6" style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', color: 'var(--text)' }}>
-          RUNWAY
-        </div>
-
-        {/* Nav */}
-        <nav className="flex flex-col gap-1 mb-6">
-          <SidebarItem to="/engagements" label="Engagements" active={location.pathname === '/' || location.pathname.startsWith('/engagements')} />
-        </nav>
-
-        {/* Engagement list */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="mb-2" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-            Engagements
-          </div>
-          <div className="flex flex-col gap-0.5">
-            {engagements
-              .filter(e => currentUser.filter === 'all' || e.engagementOwner === currentUser.name)
-              .map(e => (
-                <NavLink
-                  key={e.id}
-                  to={`/engagements/${e.id}`}
-                  className={({ isActive }) =>
-                    `flex items-center justify-between px-2 py-1.5 rounded-md text-data transition-colors ${
-                      isActive
-                        ? 'bg-surface-raised text-content'
-                        : 'text-content-muted hover:bg-surface-hover'
-                    }`
-                  }
-                >
-                  <span className="truncate text-xs">{e.name}</span>
-                  <StatusDot status={e.status} />
-                </NavLink>
-              ))}
-          </div>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <div className="flex flex-col flex-1 min-w-0" style={{ background: 'var(--bg)', borderRadius: '14px' }}>
-        {/* Top bar */}
-        <header
-          className="flex items-center justify-between shrink-0"
+        {/* .appbar — full-width top bar */}
+        <div
           style={{
-            height: '48px',
-            padding: '0 14px',
-            background: 'var(--panel)',
-            borderRadius: '14px 14px 0 0',
+            display: 'grid',
+            gridTemplateColumns: '1fr minmax(0,440px) 1fr',
+            alignItems: 'center',
+            gap: '14px',
+            marginBottom: '14px',
+            paddingBottom: '14px',
             borderBottom: '1px solid var(--line)',
           }}
         >
-          {/* Left — logo */}
-          <div style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.08em', color: 'var(--text)', width: '160px' }}>
-            RUNWAY
+          {/* Logo */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifySelf: 'start',
+              padding: '0 10px',
+            }}
+          >
+            <img src="/logo-green-bg.svg" alt="RUNWAY" style={{ width: '40px', height: '40px' }} />
           </div>
 
-          {/* Center — search */}
-          <div className="flex-1 flex justify-center">
-            <div
-              className="flex items-center gap-2"
-              style={{
-                background: 'var(--panel)',
-                border: '1px solid var(--line-strong)',
-                borderRadius: '8px',
-                padding: '5px 12px',
-                width: '100%',
-                maxWidth: '440px',
-                fontSize: '12px',
-                color: 'var(--faint)',
-              }}
+          {/* Search */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              border: '1px solid var(--line)',
+              borderRadius: '8px',
+              padding: '7px 10px',
+              background: 'var(--panel)',
+              width: '100%',
+            }}
+          >
+            <Search size={14} style={{ color: 'var(--faint)', flex: 'none' }} />
+            <input
+              placeholder="Search engagements"
+              aria-label="Search engagements"
+              style={{ background: 'none', border: 'none', outline: 'none', color: 'var(--text)', font: 'inherit', fontSize: '12px', width: '100%' }}
+            />
+            <span
+              style={{ fontSize: '11px', border: '1px solid var(--line-strong)', borderRadius: '4px', padding: '1px 5px', color: 'var(--faint)', whiteSpace: 'nowrap' }}
             >
-              <span>🔍</span>
-              <span>Search engagements...</span>
-              <span className="ml-auto" style={{ fontSize: '11px', opacity: 0.5 }}>⌘K</span>
-            </div>
+              ⌘K
+            </span>
           </div>
 
-          {/* Right — theme toggle + user switcher */}
-          <div className="relative flex items-center gap-2" style={{ width: '200px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={toggleTheme}
-              className="flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:bg-surface-hover"
-              style={{ color: 'var(--muted)', fontSize: '14px' }}
-              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            >
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
-            <button
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-colors hover:bg-surface-hover"
-              style={{ fontSize: '12px', color: 'var(--text)' }}
-            >
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium"
-                style={{ background: 'var(--raised)', border: '1.5px solid var(--bg)', color: 'var(--muted)' }}>
-                {currentUser.name[0]}
-              </span>
-              <span>{currentUser.name}</span>
-              <span style={{ fontSize: '10px', color: 'var(--faint)' }}>▾</span>
-            </button>
-
-            {userMenuOpen && (
-              <div
-                className="absolute top-full right-0 mt-1 z-50"
+          {/* Right — user + theme toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '14px' }}>
+            {/* User chip (with "View as" switcher) */}
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
                 style={{
-                  background: 'var(--panel)',
-                  border: '1px solid var(--line-strong)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  border: '1px solid var(--line)',
                   borderRadius: '8px',
-                  padding: '4px',
-                  minWidth: '180px',
-                  boxShadow: '-16px 0 40px rgba(0,0,0,.4)',
+                  padding: '5px 10px',
+                  fontSize: '12px',
+                  background: 'var(--panel)',
+                  color: 'var(--text)',
+                  cursor: 'pointer',
                 }}
               >
-                <div className="px-3 py-1.5" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', color: 'var(--muted)', textTransform: 'uppercase' }}>
-                  View as
-                </div>
-                {DEMO_USERS.map(u => (
-                  <button
-                    key={u.name}
-                    onClick={() => { setCurrentUser(u); setUserMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 rounded-sm transition-colors hover:bg-surface-hover"
-                    style={{
-                      fontSize: '12px',
-                      color: u.name === currentUser.name ? '#3FA85E' : '#E8ECE9',
-                    }}
-                  >
-                    {u.name} <span style={{ color: 'var(--faint)' }}>({u.role})</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </header>
+                <span
+                  style={{
+                    width: '22px', height: '22px', borderRadius: '50%',
+                    display: 'inline-grid', placeItems: 'center',
+                    fontSize: '11px', fontWeight: 600, color: '#fff',
+                    background: 'var(--accent-btn)', border: '1.5px solid var(--bg)', flex: 'none',
+                  }}
+                >
+                  {currentUser.name[0]}
+                </span>
+                <span>{currentUser.name.split(' ')[0]}</span>
+              </button>
 
-        {/* Content */}
-        <main className="flex-1 overflow-y-auto" style={{ padding: '20px' }}>
-          <Outlet context={{ currentUser }} />
-        </main>
+              {userMenuOpen && (
+                <div
+                  style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 50,
+                    background: 'var(--panel)', border: '1px solid var(--line-strong)',
+                    borderRadius: '8px', padding: '4px', minWidth: '200px',
+                  }}
+                >
+                  <div style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '.05em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                    View as
+                  </div>
+                  {DEMO_USERS.map(u => (
+                    <button
+                      key={u.name}
+                      onClick={() => { setCurrentUser(u); setUserMenuOpen(false); }}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', padding: '6px 12px',
+                        borderRadius: '4px', fontSize: '12px', background: 'none', border: 'none',
+                        color: u.name === currentUser.name ? 'var(--accent)' : 'var(--text)', cursor: 'pointer',
+                      }}
+                    >
+                      {u.name} <span style={{ color: 'var(--faint)' }}>({u.role})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Theme toggle switch */}
+            <button
+              onClick={toggleTheme}
+              aria-label="Switch between light and dark theme"
+              title="Switch theme"
+              style={{
+                padding: 0, width: '42px', height: '24px', flex: 'none',
+                borderRadius: '20px', border: '1px solid var(--line-strong)',
+                background: 'var(--panel)', position: 'relative', cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute', top: '3px', left: theme === 'light' ? '21px' : '3px',
+                  width: '16px', height: '16px', borderRadius: '50%',
+                  background: theme === 'light' ? 'var(--prog)' : 'var(--muted)',
+                  transition: '.2s',
+                }}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* .grid — sidebar + main */}
+        <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '210px minmax(0,1fr)', gap: '14px' }}>
+          {/* .side — flat, right hairline only */}
+          <aside
+            style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              borderRight: '1px solid var(--line)',
+              paddingRight: '12px',
+              overflow: 'auto',
+              minHeight: 0,
+            }}
+          >
+            <SidebarItem icon={<Briefcase size={12} />} label="Engagements" active={sidebarActive} to="/engagements" />
+
+            <div style={{ height: '1px', background: 'var(--line)', margin: '8px 0' }} />
+
+            <div style={{ padding: '0 8px', fontSize: '11px', fontWeight: 600, letterSpacing: '.05em', color: 'var(--muted)', textTransform: 'uppercase' }}>
+              Engagements
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {engagements
+                .filter(e => currentUser.filter === 'all' || e.engagementOwner === currentUser.name)
+                .map(e => {
+                  const active = location.pathname === `/engagements/${e.id}`;
+                  return (
+                    <NavLink
+                      key={e.id}
+                      to={`/engagements/${e.id}`}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '7px 8px', borderRadius: '7px', fontSize: '12.5px',
+                        color: active ? 'var(--text)' : 'var(--muted)',
+                        background: active ? 'var(--raised)' : 'transparent',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: '22px', height: '22px', flex: 'none', borderRadius: '5px',
+                          display: 'grid', placeItems: 'center',
+                          background: 'transparent', border: '1px solid var(--line-strong)',
+                          color: 'var(--muted)', fontSize: '11px', fontWeight: 600,
+                        }}
+                      >
+                        {e.name[0]?.toUpperCase()}
+                      </span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {e.name}
+                      </span>
+                      <StatusDot status={e.status} />
+                    </NavLink>
+                  );
+                })}
+            </div>
+          </aside>
+
+          {/* .main */}
+          <main style={{ overflow: 'auto', minHeight: 0 }}>
+            <Outlet context={{ currentUser }} />
+          </main>
+        </div>
       </div>
     </div>
   );
 }
 
-function SidebarItem({ to, label, active }: { to: string; label: string; active: boolean }) {
+function SidebarItem({ icon, label, active, to }: { icon: React.ReactNode; label: string; active: boolean; to: string }) {
   return (
     <NavLink
       to={to}
-      className={`flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors ${
-        active
-          ? 'bg-surface-raised text-content'
-          : 'text-content-muted hover:bg-surface-hover'
-      }`}
-      style={{ fontSize: '12.5px' }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '7px 8px', borderRadius: '7px', fontSize: '12.5px',
+        color: active ? 'var(--text)' : 'var(--muted)',
+        background: active ? 'var(--raised)' : 'transparent',
+        textDecoration: 'none',
+      }}
     >
-      {label}
+      <span
+        style={{
+          width: '22px', height: '22px', flex: 'none', borderRadius: '5px',
+          display: 'grid', placeItems: 'center',
+          background: 'var(--raised)', color: active ? 'var(--accent)' : 'var(--muted)',
+        }}
+      >
+        {icon}
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </NavLink>
   );
 }

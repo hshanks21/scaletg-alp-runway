@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -16,8 +16,8 @@
   --muted: #9AA59D;
   --faint: #848D86;
   --accent: #3FA85E;
-  --accent-btn: #1D8837;
-  --accent-btn-hover: #187430;
+  --accent-btn: #187430;
+  --accent-btn-hover: #135E27;
   --accent-soft: rgba(63, 168, 94, 0.12);
   --accent-line: rgba(63, 168, 94, 0.45);
   --hi: #E0805C;
@@ -39,8 +39,8 @@
   --muted: #4A544D;
   --faint: #5E665F;
   --accent: #1D8837;
-  --accent-btn: #1D8837;
-  --accent-btn-hover: #187430;
+  --accent-btn: #187430;
+  --accent-btn-hover: #135E27;
   --accent-soft: rgba(29, 136, 55, 0.09);
   --accent-line: rgba(29, 136, 55, 0.4);
   --hi: #B4512C;
@@ -54,7 +54,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'DM Sans', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -70,6 +70,23 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 
 /* Tabular figures for data */
 .font-data {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-feature-settings: "tnum" 1;
+}
+
+/* Primary button */
+.btn-primary {
+  background: var(--accent-btn);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-btn-hover);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.btn-primary:disabled {
+  cursor: default;
 }
 
