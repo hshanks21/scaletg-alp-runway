@@ -1,10 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #fafafa;
-  color: #1a1a2e;
+:root {
+  /* Grove — The Quiet Greenhouse */
+  --greenhouse-green: #1D8837;
+  --fern-shade: #187430;
+  --sprout: #3FA85E;
+  --night-soil: #0D0F0E;
+  --potting-bench: #141716;
+  --slate-leaf: #1A1E1C;
+  --bench-hover: #1F2321;
+  --mist-text: #E8ECE9;
+  --sage: #9AA59D;
+  --lichen: #848D86;
+  --stone: #7C8780;
+  --hairline: rgba(232, 240, 234, 0.07);
+  --hairline-strong: rgba(232, 240, 234, 0.13);
+  --sprout-wash: rgba(63, 168, 94, 0.12);
+  --sprout-edge: rgba(63, 168, 94, 0.45);
+  --rust: #E0805C;
+  --rust-light: #B4512C;
+  --amber: #D9A441;
+  --heather: #B76BA3;
 }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--night-soil);
+  color: var(--mist-text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular figures for data */
+.font-data {
+  font-feature-settings: "tnum" 1;
+}
+
