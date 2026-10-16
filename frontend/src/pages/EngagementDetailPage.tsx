@@ -301,24 +301,238 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   );
 }
 
-// ── BvA View (placeholder — workers will build this) ──
+// ── BvA View — Resource × Period grid with Budget / Actuals / Forecast ──
+
+interface BvAPeriod { start: string; end: string; }
+interface BvAMetrics { hours: number; feesAtStd: number; feesAtEng: number; }
+interface BvAPeriodData {
+  periodStart: string;
+  periodEnd: string;
+  budget: BvAMetrics;
+  actual: BvAMetrics;
+  forecast: BvAMetrics;
+}
+interface BvAResource {
+  resourceId: string;
+  resourceName: string;
+  categoryName: string;
+  standardRate: string;
+  engagementRate: string;
+  isPlaceholder: boolean;
+  region: string;
+  idealHoursCoefficient: string;
+  periods: BvAPeriodData[];
+  totals: { budget: BvAMetrics; actual: BvAMetrics; forecast: BvAMetrics };
+}
+interface BvAResponse { engagement: any; periods: BvAPeriod[]; resources: BvAResource[]; }
+
+const DOT_COLORS: Record<'budget' | 'actual' | 'forecast', string> = {
+  budget: '#7C8780',   // stone
+  actual: '#D9A441',   // amber
+  forecast: '#3FA85E', // sprout
+};
+
+function fmtHours(h: number): string {
+  if (!h) return '—';
+  return (Math.round(h * 10) / 10).toFixed(1);
+}
+function fmtMoney(f: number): string {
+  if (!f) return '—';
+  return '$' + Math.round(f).toLocaleString('en-US');
+}
+function fmtVariance(v: number): string {
+  if (Math.abs(v) < 0.05) return '0';
+  const r = Math.round(v * 10) / 10;
+  return `${v > 0 ? '+' : ''}${Number.isInteger(r) ? String(r) : r.toFixed(1)}`;
+}
 
 function BvaView({ engagementId }: { engagementId: string }) {
+  const [data, setData] = useState<BvAResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!engagementId) return;
+    fetch(`/api/engagements/${engagementId}/budget-vs-actual`)
+      .then(r => r.json())
+      .then(d => { if (d.success) setData(d.data); else setError(d.error || 'Failed to load'); })
+      .catch(() => setError('Failed to load BvA data'))
+      .finally(() => setLoading(false));
+  }, [engagementId]);
+
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: '#848D86', fontSize: '12px' }}>Loading…</div>;
+  if (error || !data) return <div style={{ padding: '40px', textAlign: 'center', color: '#E0805C', fontSize: '12px' }}>{error || 'No BvA data'}</div>;
+
+  const { periods, resources } = data;
+  const periodType = data.engagement?.periodType;
+
+  const periodLabel = (p: BvAPeriod, i: number): string => {
+    if (periodType === 'monthly') {
+      const d = new Date(`${p.start}T00:00:00`);
+      return isNaN(d.getTime()) ? `P${i + 1}` : d.toLocaleString('en-US', { month: 'short' });
+    }
+    return `Wk ${i + 1}`;
+  };
+
+  // ── Engagement Details Summary (hours by consultant level) ──
+  const levelOrder = ['PMD', 'Director', 'Consultant'];
+  const levels = [...new Set([
+    ...levelOrder.filter(l => resources.some(r => r.categoryName === l)),
+    ...resources.map(r => r.categoryName).filter((c): c is string => !!c && !levelOrder.includes(c)),
+  ])];
+  const summary = levels.map(level => {
+    const rs = resources.filter(r => r.categoryName === level);
+    const sum = (k: 'budget' | 'actual' | 'forecast') => rs.reduce((s, r) => s + r.totals[k].hours, 0);
+    const actual = sum('actual'), budget = sum('budget'), forecast = sum('forecast');
+    return { level, actual, budget, forecast, variance: forecast - budget };
+  });
+  const totalActual = summary.reduce((s, x) => s + x.actual, 0);
+  const totalBudget = summary.reduce((s, x) => s + x.budget, 0);
+  const totalForecast = summary.reduce((s, x) => s + x.forecast, 0);
+
+  // ── Grid totals (all resources per period) ──
+  const gridTotal = periods.map(p => {
+    const sum = (k: 'budget' | 'actual' | 'forecast', f: 'hours' | 'feesAtStd') =>
+      resources.reduce((s, r) => s + (r.periods.find(rp => rp.periodStart === p.start)?.[k]?.[f] || 0), 0);
+    return {
+      budget: { hours: sum('budget', 'hours'), feesAtStd: sum('budget', 'feesAtStd') },
+      actual: { hours: sum('actual', 'hours'), feesAtStd: sum('actual', 'feesAtStd') },
+      forecast: { hours: sum('forecast', 'hours'), feesAtStd: sum('forecast', 'feesAtStd') },
+    };
+  });
+
+  // style tokens
+  const hairline = 'rgba(232,240,234,0.07)';
+  const hairlineStrong = 'rgba(232,240,234,0.13)';
+  const benchHover = '#1F2321';
+  const tnum = { fontFeatureSettings: '"tnum" 1' } as const;
+
+  const th: any = {
+    fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
+    color: '#848D86', padding: '6px 10px', borderBottom: `1px solid ${hairlineStrong}`, ...tnum,
+  };
+  const td: any = {
+    fontSize: '12px', color: '#9AA59D', padding: '6px 10px', borderBottom: `1px solid ${hairline}`, ...tnum,
+  };
+  const dot = (k: 'budget' | 'actual' | 'forecast') => (
+    <span style={{ width: 6, height: 6, borderRadius: '50%', background: DOT_COLORS[k], display: 'inline-block' }} />
+  );
+
   return (
-    <div
-      style={{
-        background: '#141716',
-        borderRadius: '10px',
-        padding: '40px',
-        border: '1px solid rgba(232,240,234,0.07)',
-        textAlign: 'center',
-        color: '#848D86',
-        fontSize: '12px',
-      }}
-    >
-      Budget vs. Actual view will render here.
-      <br />
-      <span style={{ color: '#9AA59D', fontSize: '11px' }}>Resource × Period grid with Budget / Actuals / Forecast rows</span>
+    <div>
+      {/* Engagement Details Summary */}
+      <div style={{ background: '#141716', borderRadius: '10px', border: `1px solid ${hairline}`, padding: '14px 20px', marginBottom: '14px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#9AA59D', marginBottom: '10px' }}>Engagement Details Summary</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'left' }}>Level</th>
+              <th style={{ ...th, textAlign: 'right' }}>Actual</th>
+              <th style={{ ...th, textAlign: 'right' }}>Budget</th>
+              <th style={{ ...th, textAlign: 'right' }}>Forecast</th>
+              <th style={{ ...th, textAlign: 'right' }}>Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summary.map(s => (
+              <tr key={s.level} style={{ transition: 'background 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = benchHover; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+                <td style={{ fontSize: '12px', color: '#E8ECE9', padding: '6px 10px', borderBottom: `1px solid ${hairline}` }}>{s.level}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{fmtHours(s.actual)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{fmtHours(s.budget)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{fmtHours(s.forecast)}</td>
+                <td style={{ ...td, textAlign: 'right', color: s.variance >= 0 ? '#3FA85E' : '#E0805C' }}>{fmtVariance(s.variance)}</td>
+              </tr>
+            ))}
+            <tr>
+              <td style={{ fontSize: '12px', fontWeight: 500, color: '#E8ECE9', padding: '6px 10px' }}>Total</td>
+              <td style={{ ...td, textAlign: 'right', borderBottom: 'none', color: '#E8ECE9' }}>{fmtHours(totalActual)}</td>
+              <td style={{ ...td, textAlign: 'right', borderBottom: 'none', color: '#E8ECE9' }}>{fmtHours(totalBudget)}</td>
+              <td style={{ ...td, textAlign: 'right', borderBottom: 'none', color: '#E8ECE9' }}>{fmtHours(totalForecast)}</td>
+              <td style={{ ...td, textAlign: 'right', borderBottom: 'none', color: '#E8ECE9' }}>{fmtVariance(totalForecast - totalBudget)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Resource × Period grid */}
+      <div style={{ background: '#141716', borderRadius: '10px', border: `1px solid ${hairline}`, overflow: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', minWidth: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ ...th, textAlign: 'left' }}>Resource</th>
+              <th style={{ ...th, textAlign: 'left' }}>Title</th>
+              <th style={{ ...th, textAlign: 'left' }}>Region</th>
+              <th style={{ ...th, textAlign: 'right' }}>Rate (std)</th>
+              <th style={{ ...th, textAlign: 'right' }}>Rate (eng)</th>
+              {periods.map((p, i) => (
+                <th key={`${p.start}-${i}`} colSpan={2} style={{ ...th, textAlign: 'center' }}>{periodLabel(p, i)}</th>
+              ))}
+            </tr>
+            <tr>
+              <th colSpan={5} style={{ borderBottom: `1px solid ${hairlineStrong}` }}></th>
+              {periods.map((p, i) => (
+                <th key={`${p.start}-${i}-sub`} colSpan={2} style={{ ...th, textAlign: 'center', padding: '2px 10px' }}>Hrs&nbsp;&nbsp;Fee</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {resources.map(r => {
+              const std = `$${parseFloat(r.standardRate || '0').toLocaleString('en-US')}`;
+              const eng = `$${parseFloat(r.engagementRate || '0').toLocaleString('en-US')}`;
+              return (
+                <>
+                  {/* resource header */}
+                  <tr key={r.resourceId} style={{ background: '#1A1E1C' }}>
+                    <td style={{ fontSize: '12px', fontWeight: 500, color: '#E8ECE9', padding: '8px 10px' }}>{r.resourceName || 'Unknown'}</td>
+                    <td style={{ fontSize: '12px', color: '#9AA59D', padding: '8px 10px' }}>{r.categoryName || '—'}</td>
+                    <td style={{ fontSize: '12px', color: '#9AA59D', padding: '8px 10px' }}>{r.region || '—'}</td>
+                    <td style={{ fontSize: '12px', color: '#9AA59D', textAlign: 'right', padding: '8px 10px', ...tnum }}>{std}</td>
+                    <td style={{ fontSize: '12px', color: '#9AA59D', textAlign: 'right', padding: '8px 10px', ...tnum }}>{eng}</td>
+                    {periods.map((p, i) => <td key={`${p.start}-${i}`} colSpan={2}></td>)}
+                  </tr>
+                  {/* budget / actuals / forecast sub-rows */}
+                  {(['budget', 'actual', 'forecast'] as const).map(k => {
+                    const label = k === 'budget' ? 'Budget' : k === 'actual' ? 'Actuals' : 'Forecast';
+                    return (
+                      <tr key={k} style={{ transition: 'background 0.15s' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = benchHover; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+                        <td colSpan={5} style={{ fontSize: '12px', color: '#9AA59D', padding: '6px 10px 6px 22px', borderBottom: `1px solid ${hairline}` }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{dot(k)}{label}</span>
+                        </td>
+                        {r.periods.map(pd => (
+                          <>
+                            <td key={`${pd.periodStart}-h`} style={{ ...td, textAlign: 'right' }}>{fmtHours(pd[k].hours)}</td>
+                            <td key={`${pd.periodStart}-f`} style={{ ...td, textAlign: 'right' }}>{fmtMoney(pd[k].feesAtStd)}</td>
+                          </>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </>
+              );
+            })}
+
+            {/* Total row — all resources per period */}
+            {(['budget', 'actual', 'forecast'] as const).map(k => {
+              const label = k === 'budget' ? 'Total Budget' : k === 'actual' ? 'Total Actuals' : 'Total Forecast';
+              return (
+                <tr key={k} style={{ background: '#1A1E1C', borderTop: `1px solid ${hairlineStrong}` }}>
+                  <td colSpan={5} style={{ fontSize: '12px', fontWeight: 500, color: '#E8ECE9', padding: '8px 10px' }}>{label}</td>
+                  {gridTotal.map((gt, i) => (
+                    <>
+                      <td key={`${i}-h`} style={{ fontSize: '12px', fontWeight: 500, color: '#E8ECE9', textAlign: 'right', padding: '8px 10px', ...tnum }}>{fmtHours(gt[k].hours)}</td>
+                      <td key={`${i}-f`} style={{ fontSize: '12px', fontWeight: 500, color: '#E8ECE9', textAlign: 'right', padding: '8px 10px', ...tnum }}>{fmtMoney(gt[k].feesAtStd)}</td>
+                    </>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
