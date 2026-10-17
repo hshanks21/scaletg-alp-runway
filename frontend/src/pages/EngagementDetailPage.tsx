@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 
 interface EngagementDetail {
@@ -30,6 +30,115 @@ function formatCurrency(n: string | number): string {
   if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
   if (num >= 1_000) return `$${(num / 1_000).toFixed(0)}K`;
   return `$${num.toLocaleString()}`;
+}
+
+
+
+// ── KPI summary line (RUN-1) — one line, no big-number tiles ──
+
+interface KpiData {
+  forecast: {
+    estTotalRevenue: number;
+    estimatedMargin: number;
+    estimatedMarginPct: number;
+    realization: number;
+    staffPmdHours: number;
+    pctBelowDirector: number;
+  };
+  budget: {
+    marginPct: number | null;
+    realization: number | null;
+    staffPmdHours: number | null;
+    pctBelowDirector: number | null;
+  };
+  variance: {
+    marginPct: number | null;
+    realization: number | null;
+    staffPmdHours: number | null;
+    pctBelowDirector: number | null;
+  };
+}
+
+const KPI_LINE_STYLE: CSSProperties = {
+  background: 'var(--panel)',
+  borderRadius: '10px',
+  padding: '12px 20px',
+  border: '1px solid var(--line)',
+  marginBottom: '14px',
+  fontSize: '13px',
+  color: 'var(--muted)',
+  fontFeatureSettings: '"tnum" 1',
+};
+
+// Margin % status color: accent (green) >=20%, hi (rust) <10%, muted (sage) 10-20%.
+function marginColor(pct: number): string {
+  if (pct >= 20) return 'var(--accent)';
+  if (pct < 10) return 'var(--hi)';
+  return 'var(--muted)';
+}
+
+function KpiSummaryLine({ engagementId, mode }: { engagementId: string; mode: 'budget' | 'bva' }) {
+  const [kpis, setKpis] = useState<KpiData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const apiMode = mode === 'budget' ? 'budget' : 'forecast';
+    fetch(`/api/engagements/${engagementId}/kpis?mode=${apiMode}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d.success) setKpis(d.data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [engagementId, mode]);
+
+  if (!kpis) {
+    return (
+      <div style={KPI_LINE_STYLE}>
+        <span style={{ color: 'var(--faint)' }}>KPIs loading…</span>
+      </div>
+    );
+  }
+
+  const f = kpis.forecast;
+  const pct = (x: number | null) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
+
+  if (mode === 'budget') {
+    const mPct = f.estimatedMarginPct * 100;
+    return (
+      <div style={KPI_LINE_STYLE}>
+        <span style={{ fontWeight: 600, color: marginColor(mPct) }}>
+          Revenue {formatCurrency(f.estTotalRevenue)} · Margin {formatCurrency(f.estimatedMargin)} ({mPct.toFixed(1)}%)
+        </span>
+        {' · '}
+        <span>Realization {(f.realization * 100).toFixed(1)}%</span>
+        {' · '}
+        <span>Staff/PMD {f.staffPmdHours.toFixed(1)}</span>
+        {' · '}
+        <span>Below Dir {(f.pctBelowDirector * 100).toFixed(1)}%</span>
+      </div>
+    );
+  }
+
+  // BvA: Budget -> Forecast, variance only on the leading fact (Margin).
+  const b = kpis.budget;
+  const v = kpis.variance;
+  const fPct = f.estimatedMarginPct * 100;
+  const delta = v.marginPct != null && v.marginPct !== 0
+    ? ` (${v.marginPct > 0 ? '+' : '-'}${Math.abs(v.marginPct).toFixed(1)}%)`
+    : '';
+
+  return (
+    <div style={KPI_LINE_STYLE}>
+      <span style={{ fontWeight: 600, color: marginColor(fPct) }}>
+        Margin: {pct(b.marginPct)} → {pct(f.estimatedMarginPct)}{delta}
+      </span>
+      {' · '}
+      <span>Realization: {pct(b.realization)} → {pct(f.realization)}</span>
+      {' · '}
+      <span>Staff/PMD: {(b.staffPmdHours == null ? '—' : b.staffPmdHours.toFixed(1))} → {f.staffPmdHours.toFixed(1)}</span>
+      {' · '}
+      <span>Below Dir: {pct(b.pctBelowDirector)} → {pct(f.pctBelowDirector)}</span>
+    </div>
+  );
 }
 
 export function EngagementDetailPage() {
@@ -345,24 +454,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   return (
     <div>
       {/* KPI summary line */}
-      <div
-        style={{
-          background: 'var(--panel)',
-          borderRadius: '10px',
-          padding: '12px 20px',
-          border: '1px solid var(--line)',
-          marginBottom: '14px',
-          fontSize: '12px',
-          color: 'var(--muted)',
-        }}
-      >
-        <span style={{ fontWeight: 500, color: 'var(--text)' }}>
-          {engagement.tasks?.length || 0} tasks
-        </span>
-        {' · '}
-        {engagement.tasks?.reduce((s: number, t: any) => s + (t.allocations?.length || 0), 0) || 0} resources allocated
-        {' · KPIs loading...'}
-      </div>
+      <KpiSummaryLine engagementId={engagement.id} mode="budget" />
 
       {/* Tasks + Allocations */}
       <div
@@ -457,20 +549,26 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
 
 function BvaView({ engagementId }: { engagementId: string }) {
   return (
-    <div
-      style={{
-        background: 'var(--panel)',
-        borderRadius: '10px',
-        padding: '40px',
-        border: '1px solid var(--line)',
-        textAlign: 'center',
-        color: 'var(--faint)',
-        fontSize: '12px',
-      }}
-    >
-      Budget vs. Actual view will render here.
-      <br />
-      <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Resource × Period grid with Budget / Actuals / Forecast rows</span>
+    <div>
+      {/* KPI summary line — Budget → Forecast (RUN-1) */}
+      <KpiSummaryLine engagementId={engagementId} mode="bva" />
+
+      {/* BvA grid (RUN-2) */}
+      <div
+        style={{
+          background: 'var(--panel)',
+          borderRadius: '10px',
+          padding: '40px',
+          border: '1px solid var(--line)',
+          textAlign: 'center',
+          color: 'var(--faint)',
+          fontSize: '12px',
+        }}
+      >
+        Budget vs. Actual view will render here.
+        <br />
+        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Resource × Period grid with Budget / Actuals / Forecast rows</span>
+      </div>
     </div>
   );
 }
