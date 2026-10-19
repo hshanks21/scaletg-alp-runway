@@ -364,7 +364,7 @@ export function EngagementDetailPage() {
       {/* Tab content */}
       {activeTab === 'budget' && <BudgetView engagement={engagement} />}
       {activeTab === 'bva' && <BvaView engagementId={engagement.id} tasks={engagement.tasks} />}
-      {activeTab === 'checkpoints' && <CheckpointsView engagementId={engagement.id} />}
+      {activeTab === 'checkpoints' && <CheckpointsView engagement={engagement} />}
 
       {/* Reject dialog */}
       {rejectOpen && (
@@ -1219,24 +1219,212 @@ function BvaView({ engagementId, tasks }: { engagementId: string; tasks: any[] }
   );
 }
 
-// ── Checkpoints View (placeholder — workers will build this) ──
+// ── Checkpoints View (RUN-5) — snapshot list + Baseline + diff comparison ──
 
-function CheckpointsView({ engagementId }: { engagementId: string }) {
+interface Checkpoint {
+  id: string;
+  kind: 'submitted' | 'approved' | 'modified';
+  label: string | null;
+  snapshot: Record<string, unknown>;
+  comment: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+const CHECKPOINT_KIND_META: Record<Checkpoint['kind'], { label: string; dot: string }> = {
+  submitted: { label: 'Submitted', dot: 'var(--prog)' },
+  approved: { label: 'Approved', dot: 'var(--accent)' },
+  modified: { label: 'Modified', dot: 'var(--rev)' },
+};
+
+function fmtCheckpointDate(s: string): string {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function fmtSnapshotValue(v: unknown): string {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+type DiffStatus = 'added' | 'removed' | 'changed' | 'same';
+interface DiffRow { key: string; left: string; right: string; status: DiffStatus; }
+
+function diffRecords(left: Record<string, unknown>, right: Record<string, unknown>): DiffRow[] {
+  const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
+  return keys.map((key) => {
+    const inL = key in left;
+    const inR = key in right;
+    const lv = inL ? fmtSnapshotValue(left[key]) : '';
+    const rv = inR ? fmtSnapshotValue(right[key]) : '';
+    let status: DiffStatus;
+    if (!inL && inR) status = 'added';
+    else if (inL && !inR) status = 'removed';
+    else if (lv !== rv) status = 'changed';
+    else status = 'same';
+    return { key, left: lv, right: rv, status };
+  });
+}
+
+const DIFF_COLORS: Record<DiffStatus, string> = {
+  added: 'var(--accent)',
+  removed: 'var(--hi)',
+  changed: 'var(--prog)',
+  same: 'var(--muted)',
+};
+
+function CheckpointsView({ engagement }: { engagement: EngagementDetail }) {
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[] | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/engagements/${engagement.id}/checkpoints`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d.success) setCheckpoints(d.data);
+        else setError(d.error || 'Failed to load checkpoints');
+      })
+      .catch(() => { if (!cancelled) setError('Failed to load checkpoints'); });
+    return () => { cancelled = true; };
+  }, [engagement.id]);
+
+  if (error) {
+    return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--hi)', fontSize: '12px' }}>{error}</div>;
+  }
+  if (!checkpoints) {
+    return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>Loading checkpoints…</div>;
+  }
+  if (checkpoints.length === 0) {
+    return (
+      <div style={{ background: 'var(--panel)', borderRadius: '10px', padding: '40px', border: '1px solid var(--line)', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>
+        No checkpoints yet.
+        <br />
+        <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Submit or approve this engagement to create snapshots</span>
+      </div>
+    );
+  }
+
+  const baselineId = checkpoints.find((c) => c.kind === 'approved')?.id ?? null;
+  const selected = checkpoints.find((c) => c.id === selectedId) ?? checkpoints[0];
+
+  const currentState: Record<string, unknown> = {
+    status: engagement.status,
+    clientName: engagement.clientName,
+    name: engagement.name,
+    engagementOwner: engagement.engagementOwner,
+    agreedBaseFees: engagement.agreedBaseFees,
+    contingentFees: engagement.contingentFees,
+    startDate: engagement.startDate,
+    endDate: engagement.endDate,
+    periodType: engagement.periodType,
+  };
+
+  const diff = diffRecords(selected.snapshot, currentState);
+  const snapshotRows = diff.filter((r) => r.status !== 'added');
+  const currentRows = diff.filter((r) => r.status !== 'removed');
+
+  const listItemStyle = (isSelected: boolean, isBaseline: boolean): CSSProperties => ({
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '10px',
+    padding: '12px 14px',
+    cursor: 'pointer',
+    background: isSelected ? 'var(--raised)' : 'transparent',
+    border: isBaseline ? '1px solid var(--accent-line)' : '1px solid transparent',
+    borderRadius: '8px',
+    marginBottom: '8px',
+  });
+
+  const panelStyle: CSSProperties = {
+    flex: 1,
+    background: 'var(--panel)',
+    border: '1px solid var(--line)',
+    borderRadius: '10px',
+    padding: '16px',
+    minHeight: '280px',
+  };
+
+  const panelTitle: CSSProperties = {
+    fontSize: '11px',
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    color: 'var(--faint)',
+    marginBottom: '12px',
+  };
+
+  const diffText: CSSProperties = {
+    fontFamily: '"Space Grotesk", "Inter", sans-serif',
+    fontSize: '12px',
+    lineHeight: '1.8',
+    fontFeatureSettings: '"tnum" 1',
+    wordBreak: 'break-word',
+  };
+
   return (
-    <div
-      style={{
-        background: 'var(--panel)',
-        borderRadius: '10px',
-        padding: '40px',
-        border: '1px solid var(--line)',
-        textAlign: 'center',
-        color: 'var(--faint)',
-        fontSize: '12px',
-      }}
-    >
-      Checkpoints will render here.
-      <br />
-      <span style={{ color: 'var(--muted)', fontSize: '11px' }}>Submitted / Approved / Modified snapshots with comparison</span>
+    <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+      <div style={{ flex: '0 0 320px' }}>
+        {checkpoints.map((c) => {
+          const meta = CHECKPOINT_KIND_META[c.kind];
+          const isBaseline = c.id === baselineId;
+          const isSelected = c.id === selected.id;
+          return (
+            <div key={c.id} style={listItemStyle(isSelected, isBaseline)} onClick={() => setSelectedId(c.id)}>
+              <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: meta.dot, marginTop: '6px', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{meta.label}</span>
+                  {isBaseline && (
+                    <span style={{ fontSize: '10px', color: 'var(--accent)', border: '1px solid var(--accent-line)', borderRadius: '4px', padding: '0 5px', lineHeight: '1.6' }}>
+                      Baseline 📌
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--faint)', marginTop: '2px' }}>
+                  {fmtCheckpointDate(c.createdAt)}
+                  {c.createdBy ? ` · ${c.createdBy}` : ''}
+                </div>
+                {c.comment && (
+                  <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px', fontStyle: 'italic' }}>
+                    {c.comment}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ flex: '1 1 auto', display: 'flex', gap: '16px' }}>
+        <div style={panelStyle}>
+          <div style={panelTitle}>Snapshot · {CHECKPOINT_KIND_META[selected.kind].label}</div>
+          <div style={diffText}>
+            {snapshotRows.map((r) => (
+              <div key={r.key}>
+                <span style={{ color: DIFF_COLORS[r.status] }}>{r.status === 'removed' ? '- ' : '  '}{r.key}: {r.left}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={panelStyle}>
+          <div style={panelTitle}>Current</div>
+          <div style={diffText}>
+            {currentRows.map((r) => (
+              <div key={r.key}>
+                <span style={{ color: DIFF_COLORS[r.status] }}>{r.status === 'added' ? '+ ' : '  '}{r.key}: {r.right}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
