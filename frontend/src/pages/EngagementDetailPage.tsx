@@ -77,7 +77,7 @@ function marginColor(pct: number): string {
   return 'var(--muted)';
 }
 
-function KpiSummaryLine({ engagementId, mode }: { engagementId: string; mode: 'budget' | 'bva' }) {
+function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId: string; mode: 'budget' | 'bva'; refreshToken?: number }) {
   const [kpis, setKpis] = useState<KpiData | null>(null);
 
   useEffect(() => {
@@ -88,7 +88,7 @@ function KpiSummaryLine({ engagementId, mode }: { engagementId: string; mode: 'b
       .then((d) => { if (!cancelled && d.success) setKpis(d.data); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [engagementId, mode]);
+  }, [engagementId, mode, refreshToken]);
 
   if (!kpis) {
     return (
@@ -363,7 +363,7 @@ export function EngagementDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'budget' && <BudgetView engagement={engagement} />}
-      {activeTab === 'bva' && <BvaView engagementId={engagement.id} />}
+      {activeTab === 'bva' && <BvaView engagementId={engagement.id} tasks={engagement.tasks} />}
       {activeTab === 'checkpoints' && <CheckpointsView engagementId={engagement.id} />}
 
       {/* Reject dialog */}
@@ -590,25 +590,98 @@ function fmtVariance(v: number): string {
   return `${v > 0 ? '+' : ''}${Number.isInteger(r) ? String(r) : r.toFixed(1)}`;
 }
 
-function BvaView({ engagementId }: { engagementId: string }) {
+function recomputeTotals(periods: BvAPeriodData[]): { budget: BvAMetrics; actual: BvAMetrics; forecast: BvAMetrics } {
+  const zero = (): BvAMetrics => ({ hours: 0, feesAtStd: 0, feesAtEng: 0 });
+  const sum = (k: 'budget' | 'actual' | 'forecast'): BvAMetrics =>
+    periods.reduce(
+      (s, p) => ({
+        hours: s.hours + p[k].hours,
+        feesAtStd: s.feesAtStd + p[k].feesAtStd,
+        feesAtEng: s.feesAtEng + p[k].feesAtEng,
+      }),
+      zero(),
+    );
+  return { budget: sum('budget'), actual: sum('actual'), forecast: sum('forecast') };
+}
+
+function BvaView({ engagementId, tasks }: { engagementId: string; tasks: any[] }) {
   const [data, setData] = useState<BvAResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  // Forecast inline editing
+  const [editing, setEditing] = useState<{ resourceId: string; periodStart: string; periodEnd: string } | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Adjustment inputs (initialised from the engagement once it loads)
+  const [adj, setAdj] = useState<Record<string, string>>({});
+  const [adjBusy, setAdjBusy] = useState(false);
+
+  // Insert new employee
+  const [insertOpen, setInsertOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const [notice, setNotice] = useState('');
+  const noticeTimer = useRef<number | null>(null);
+  const searchTimer = useRef<number | null>(null);
+  const cancelRef = useRef(false);
+
+  const flash = (msg: string) => {
+    setNotice(msg);
+    if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(''), 2500);
+  };
+
+  const today = (() => {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  })();
+
+  const loadData = async () => {
+    if (!engagementId) return;
+    try {
+      const r = await fetch(`/api/engagements/${engagementId}/budget-vs-actual`);
+      const d = await r.json();
+      if (d.success) setData(d.data);
+      else setError(d.error || 'Failed to load');
+    } catch {
+      setError('Failed to load BvA data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!engagementId) return;
-    fetch(`/api/engagements/${engagementId}/budget-vs-actual`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setData(d.data); else setError(d.error || 'Failed to load'); })
-      .catch(() => setError('Failed to load BvA data'))
-      .finally(() => setLoading(false));
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engagementId]);
+
+  // Initialise the adjustment inputs once the engagement loads
+  useEffect(() => {
+    const e: any = data?.engagement;
+    if (!e) return;
+    setAdj({
+      agreedBaseFeesAdj: e.agreedBaseFeesAdj ?? '0',
+      contingentFeesAdj: e.contingentFeesAdj ?? '0',
+      expenseAdj: e.expenseAdj ?? '0',
+      digitalToolsAdj: e.digitalToolsAdj ?? '0',
+      etsCostsAdj: e.etsCostsAdj ?? '0',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.engagement?.id]);
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>Loading…</div>;
   if (error || !data) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--hi)', fontSize: '12px' }}>{error || 'No BvA data'}</div>;
 
   const { periods, resources } = data;
   const periodType = data.engagement?.periodType;
+  const eng: any = data.engagement || {};
 
   const periodLabel = (p: BvAPeriod, i: number): string => {
     if (periodType === 'monthly') {
@@ -662,9 +735,218 @@ function BvaView({ engagementId }: { engagementId: string }) {
     <span style={{ width: 6, height: 6, borderRadius: '50%', background: DOT_COLORS[k], display: 'inline-block' }} />
   );
 
+  // ── Revenue / cost adjustment financials ──
+  const n = (v: any) => parseFloat(v ?? '0') || 0;
+  const budgetedRevenue = n(eng.agreedBaseFees) + n(eng.contingentFees);
+  const forecastedRevenue = budgetedRevenue + n(adj.agreedBaseFeesAdj) + n(adj.contingentFeesAdj);
+  const budgetedExpenses = n(eng.expensesBudget);
+  const forecastedExpenses = budgetedExpenses + n(adj.expenseAdj);
+  const budgetedETS = n(eng.etsBudget) + n(eng.digitalToolsBudget);
+  const forecastedETS = budgetedETS + n(adj.digitalToolsAdj) + n(adj.etsCostsAdj);
+
+  // ── Edit handlers ──
+
+  const startEdit = (r: BvAResource, pd: BvAPeriodData) => {
+    const past = pd.periodEnd < today;
+    const fh = pd.forecast.hours;
+    const init = fh > 0 ? fh : (past ? pd.actual.hours : pd.budget.hours);
+    cancelRef.current = false;
+    setEditing({ resourceId: r.resourceId, periodStart: pd.periodStart, periodEnd: pd.periodEnd });
+    setDraft(init > 0 ? String(init) : '');
+  };
+
+  const cancelEdit = () => {
+    cancelRef.current = true;
+    setEditing(null);
+  };
+
+  const saveForecast = async () => {
+    if (!editing || !engagementId || busy || cancelRef.current) return;
+    const parsed = parseFloat(draft);
+    const hours = Number.isFinite(parsed) ? parsed : 0;
+    const { resourceId, periodStart, periodEnd } = editing;
+
+    setEditing(null);
+    setBusy(true);
+
+    // Optimistic update
+    setData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        resources: prev.resources.map(r => {
+          if (r.resourceId !== resourceId) return r;
+          const stdRate = parseFloat(r.standardRate || '0');
+          const engRate = parseFloat(r.engagementRate || '0');
+          const periods = r.periods.map(p =>
+            p.periodStart === periodStart
+              ? { ...p, forecast: { hours, feesAtStd: hours * stdRate, feesAtEng: hours * engRate } }
+              : p,
+          );
+          return { ...r, periods, totals: recomputeTotals(periods) };
+        }),
+      };
+    });
+
+    try {
+      const r = await fetch(`/api/engagements/${engagementId}/forecasts`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ resourceId, periodStart, periodEnd, hours }] }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setRefreshToken(t => t + 1);
+        flash('Forecast saved');
+      } else {
+        flash(d.error || 'Failed to save forecast');
+        loadData();
+      }
+    } catch {
+      flash('Network error');
+      loadData();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeResourceForecast = async (r: BvAResource) => {
+    if (!engagementId || busy) return;
+    const items = r.periods.map(p => ({ resourceId: r.resourceId, periodStart: p.periodStart, periodEnd: p.periodEnd, hours: 0 }));
+    setBusy(true);
+    setData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        resources: prev.resources.map(rr => {
+          if (rr.resourceId !== r.resourceId) return rr;
+          const periods = rr.periods.map(p => ({ ...p, forecast: { hours: 0, feesAtStd: 0, feesAtEng: 0 } }));
+          return { ...rr, periods, totals: recomputeTotals(periods) };
+        }),
+      };
+    });
+    try {
+      const resp = await fetch(`/api/engagements/${engagementId}/forecasts`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      const d = await resp.json();
+      if (d.success) { setRefreshToken(t => t + 1); flash('Forecast hours removed'); }
+      else { flash(d.error || 'Failed'); loadData(); }
+    } catch {
+      flash('Network error');
+      loadData();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeTbd = async () => {
+    if (!engagementId || busy) return;
+    setBusy(true);
+    try {
+      const resp = await fetch(`/api/engagements/${engagementId}/forecasts/remove-tbd`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const d = await resp.json();
+      if (d.success) { await loadData(); setRefreshToken(t => t + 1); flash(d.message || 'TBD forecasts removed'); }
+      else flash(d.error || 'Failed');
+    } catch {
+      flash('Network error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onSearchChange = (q: string) => {
+    setSearchQuery(q);
+    if (searchTimer.current) window.clearTimeout(searchTimer.current);
+    if (!q.trim()) { setSearchResults([]); return; }
+    searchTimer.current = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const r = await fetch(`/api/resources?search=${encodeURIComponent(q.trim())}`);
+        const d = await r.json();
+        if (d.success) setSearchResults(d.data || []);
+      } catch { /* ignore */ }
+      finally { setSearching(false); }
+    }, 250);
+  };
+
+  const insertEmployee = async (res: any) => {
+    if (!engagementId || busy) return;
+    const taskId = tasks?.[0]?.id;
+    if (!taskId) { flash('No task available to assign the resource'); return; }
+    setBusy(true);
+    try {
+      const r = await fetch(`/api/engagements/${engagementId}/allocations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, resourceId: res.id, engagementRate: res.standardRate }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setInsertOpen(false);
+        setSearchQuery('');
+        setSearchResults([]);
+        await loadData();
+        setRefreshToken(t => t + 1);
+        flash('Resource added — edit their forecast hours');
+      } else {
+        flash(d.error || 'Failed to add resource');
+      }
+    } catch {
+      flash('Network error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveAdjustment = async (field: string) => {
+    if (!engagementId || adjBusy) return;
+    setAdjBusy(true);
+    try {
+      const r = await fetch(`/api/engagements/${engagementId}/adjustments`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: adj[field] ?? '0' }),
+      });
+      const d = await r.json();
+      if (d.success) {
+        setData(prev => (prev ? { ...prev, engagement: d.data } : prev));
+        setRefreshToken(t => t + 1);
+        flash('Adjustment saved');
+      } else {
+        flash(d.error || 'Failed to save adjustment');
+      }
+    } catch {
+      flash('Network error');
+    } finally {
+      setAdjBusy(false);
+    }
+  };
+
+  const adjInput = (field: string) => (
+    <input
+      value={adj[field] ?? ''}
+      onChange={e => setAdj(prev => ({ ...prev, [field]: e.target.value }))}
+      onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent-line)'; }}
+      onBlur={e => { e.currentTarget.style.borderColor = 'var(--line)'; saveAdjustment(field); }}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      inputMode="decimal"
+      style={{
+        width: '88px', textAlign: 'right', background: 'var(--bg)', color: 'var(--text)',
+        border: '1px solid var(--line)', borderRadius: '4px', padding: '4px 8px', fontSize: '12px', ...tnum,
+      }}
+    />
+  );
+
   return (
     <div>
-      <KpiSummaryLine engagementId={engagementId} mode="bva" />
+      <KpiSummaryLine engagementId={engagementId} mode="bva" refreshToken={refreshToken} />
 
       {/* Engagement Details Summary */}
       <div style={{ background: 'var(--panel)', borderRadius: '10px', border: `1px solid ${hairline}`, padding: '14px 20px', marginBottom: '14px' }}>
@@ -746,14 +1028,69 @@ function BvaView({ engagementId }: { engagementId: string }) {
                         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = benchHover; }}
                         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
                         <td colSpan={5} style={{ fontSize: '12px', color: 'var(--muted)', padding: '6px 10px 6px 22px', borderBottom: `1px solid ${hairline}` }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{dot(k)}{label}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            {dot(k)}{label}
+                            {k === 'forecast' && (
+                              <button
+                                onClick={() => removeResourceForecast(r)}
+                                disabled={busy}
+                                style={{ fontSize: '11px', color: 'var(--hi)', background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer', padding: 0 }}
+                              >
+                                Remove Fcst Hours
+                              </button>
+                            )}
+                          </span>
                         </td>
-                        {r.periods.map(pd => (
-                          <>
-                            <td key={`${pd.periodStart}-h`} style={{ ...td, textAlign: 'right' }}>{fmtHours(pd[k].hours)}</td>
-                            <td key={`${pd.periodStart}-f`} style={{ ...td, textAlign: 'right' }}>{fmtMoney(pd[k].feesAtStd)}</td>
-                          </>
-                        ))}
+                        {k === 'forecast'
+                          ? r.periods.map(pd => {
+                              const isEditing = editing?.resourceId === r.resourceId && editing?.periodStart === pd.periodStart;
+                              const past = pd.periodEnd < today;
+                              if (isEditing) {
+                                return (
+                                  <td key={`${pd.periodStart}-fc`} colSpan={2} style={{ ...td, textAlign: 'right', padding: '2px 4px' }}>
+                                    <input
+                                      autoFocus
+                                      type="number"
+                                      step="0.5"
+                                      value={draft}
+                                      onChange={e => setDraft(e.target.value)}
+                                      onBlur={saveForecast}
+                                      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') cancelEdit(); }}
+                                      style={{
+                                        width: '64px', textAlign: 'right', background: 'var(--bg)', color: 'var(--text)',
+                                        border: '1px solid var(--accent-line)', borderRadius: '4px', padding: '3px 6px', fontSize: '12px', ...tnum,
+                                      }}
+                                    />
+                                  </td>
+                                );
+                              }
+                              const override = past && pd.forecast.hours === 0 && pd.actual.hours > 0;
+                              return (
+                                <td
+                                  key={`${pd.periodStart}-fc`}
+                                  colSpan={2}
+                                  onClick={() => startEdit(r, pd)}
+                                  title={past ? 'Edit forecast (defaults to Actuals)' : 'Edit forecast (defaults to Budget)'}
+                                  style={{
+                                    ...td,
+                                    textAlign: 'right',
+                                    cursor: 'pointer',
+                                    color: override ? 'var(--prog)' : 'var(--text)',
+                                  }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-soft)'; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                                >
+                                  {fmtHours(pd.forecast.hours)}
+                                  <span style={{ color: 'var(--faint)', fontSize: '11px', marginLeft: 6 }}>{fmtMoney(pd.forecast.feesAtStd)}</span>
+                                </td>
+                              );
+                            })
+                          : r.periods.map(pd => (
+                              <>
+                                <td key={`${pd.periodStart}-h`} style={{ ...td, textAlign: 'right' }}>{fmtHours(pd[k].hours)}</td>
+                                <td key={`${pd.periodStart}-f`} style={{ ...td, textAlign: 'right' }}>{fmtMoney(pd[k].feesAtStd)}</td>
+                              </>
+                            ))}
                       </tr>
                     );
                   })}
@@ -778,6 +1115,106 @@ function BvaView({ engagementId }: { engagementId: string }) {
             })}
           </tbody>
         </table>      </div>
+
+      {/* Revenue / Cost adjustments */}
+      <div style={{ background: 'var(--panel)', borderRadius: '10px', border: `1px solid ${hairline}`, padding: '14px 20px', marginTop: '14px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '10px' }}>Revenue / Cost Adjustments</div>
+
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: '12px', color: 'var(--muted)', padding: '5px 0' }}>
+          <span style={{ color: 'var(--text)' }}>Budgeted Revenue:</span>
+          <span style={{ color: 'var(--text)', ...tnum }}>{formatCurrency(budgetedRevenue)}</span>
+          <span>+ Adj:</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>Base</span>
+            {adjInput('agreedBaseFeesAdj')}
+            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>Contingent</span>
+            {adjInput('contingentFeesAdj')}
+          </span>
+          <span>=</span>
+          <span style={{ color: 'var(--accent)' }}>Forecasted Revenue: <span style={{ ...tnum }}>{formatCurrency(forecastedRevenue)}</span></span>
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--faint)', padding: '0 0 6px 0' }}>
+          Agreed Base Fees: {formatCurrency(n(eng.agreedBaseFees))} · Contingent/Other: {formatCurrency(n(eng.contingentFees))}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: '12px', color: 'var(--muted)', padding: '5px 0' }}>
+          <span style={{ color: 'var(--text)' }}>Budgeted Expenses:</span>
+          <span style={{ color: 'var(--text)', ...tnum }}>{formatCurrency(budgetedExpenses)}</span>
+          <span>+ Adj:</span>
+          {adjInput('expenseAdj')}
+          <span>=</span>
+          <span style={{ color: 'var(--accent)' }}>Forecasted Expenses: <span style={{ ...tnum }}>{formatCurrency(forecastedExpenses)}</span></span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, fontSize: '12px', color: 'var(--muted)', padding: '5px 0' }}>
+          <span style={{ color: 'var(--text)' }}>Budgeted ETS:</span>
+          <span style={{ color: 'var(--text)', ...tnum }}>{formatCurrency(budgetedETS)}</span>
+          <span>+ Adj:</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>Digital Tools</span>
+            {adjInput('digitalToolsAdj')}
+            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>ETS Costs</span>
+            {adjInput('etsCostsAdj')}
+          </span>
+          <span>=</span>
+          <span style={{ color: 'var(--accent)' }}>Forecasted ETS: <span style={{ ...tnum }}>{formatCurrency(forecastedETS)}</span></span>
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--faint)', padding: '0 0 6px 0' }}>
+          Digital Tools: {formatCurrency(n(eng.digitalToolsBudget))} · ETS Costs: {formatCurrency(n(eng.etsBudget))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: '14px', flexWrap: 'wrap' }}>
+        <button
+          onClick={removeTbd}
+          disabled={busy}
+          style={{ fontSize: '12px', color: 'var(--hi)', background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: '6px', padding: '6px 12px', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}
+        >
+          Remove TBD Forecasted Hours
+        </button>
+        <button
+          onClick={() => setInsertOpen(o => !o)}
+          disabled={busy}
+          style={{ fontSize: '12px', color: 'var(--accent)', background: 'transparent', border: '1px solid var(--line-strong)', borderRadius: '6px', padding: '6px 12px', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}
+        >
+          Insert New Employee
+        </button>
+        {notice && <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{notice}</span>}
+      </div>
+
+      {/* Insert new employee search */}
+      {insertOpen && (
+        <div style={{ background: 'var(--panel)', borderRadius: '10px', border: `1px solid ${hairline}`, padding: '12px 16px', marginTop: '12px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>Insert New Employee</div>
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={e => onSearchChange(e.target.value)}
+            placeholder="Type a name to search resources…"
+            style={{ width: '300px', background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--line)', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', outline: 'none' }}
+          />
+          {searching && <span style={{ fontSize: '11px', color: 'var(--faint)', marginLeft: 8 }}>Searching…</span>}
+          {searchResults.length > 0 && (
+            <div style={{ marginTop: '8px', borderTop: `1px solid ${hairline}` }}>
+              {searchResults.map(res => (
+                <button
+                  key={res.id}
+                  onClick={() => insertEmployee(res)}
+                  disabled={busy}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px 4px', cursor: busy ? 'default' : 'pointer', borderBottom: `1px solid ${hairline}` }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--hover)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <span style={{ fontSize: '12px', color: 'var(--text)' }}>{res.name}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{res.categoryName} · {res.region || '—'}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--muted)', marginLeft: 'auto', ...tnum }}>${parseFloat(res.standardRate || '0').toLocaleString('en-US')} std</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
