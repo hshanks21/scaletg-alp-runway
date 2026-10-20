@@ -90,3 +90,41 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
   cursor: default;
 }
 
+/* Dialog animation — calm fade + gentle rise, no overshoot */
+@keyframes runway-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes runway-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes runway-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes runway-dialog-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+
+.runway-backdrop {
+  animation: runway-backdrop-in 0.16s ease-out;
+}
+.runway-backdrop.is-closing {
+  animation: runway-backdrop-out 0.15s ease-in forwards;
+}
+.runway-dialog {
+  animation: runway-dialog-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.runway-dialog.is-closing {
+  animation: runway-dialog-out 0.15s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runway-backdrop,
+  .runway-dialog {
+    animation: none;
+  }
+}
+

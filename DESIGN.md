@@ -332,6 +332,19 @@ Every number links to the filtered list. There are no big-number tiles.
 - **Toast:** Slate Leaf with a hairline border, centered at the bottom, with an 8px radius and a 7px Sprout dot. It disappears after about 2 seconds, or about 7 seconds when it carries an Undo button. Messages are also sent to a polite live region for screen readers.
 - **Dialog:** Potting Bench with a Hairline Strong border, 12px radius, 22px padding, and the title in Headline style. Cancel and the named primary action sit bottom-right.
 
+### Motion
+Motion is calm, quick, and never decorative — one shared pattern for all dialogs.
+
+- **Open:** the backdrop fades in over 160ms while the panel fades up 8px from a 0.97 scale over 200ms (`cubic-bezier(0.16, 1, 0.3, 1)`).
+- **Close:** both surfaces play a 150ms fade/sink-out before the dialog unmounts. Dismissals are never instant.
+
+**Implementation (the method):** dialogs are conditionally rendered, so to animate the exit they stay mounted through a `closing` state. Use the `useDialogTransition(onClose)` hook and the shared classes:
+
+- `.runway-backdrop` and `.runway-dialog` — the two animation surfaces.
+- `.is-closing` — appended during the 150ms exit (plays the reverse keyframes with `forwards` fill).
+
+Any new dialog reuses these classes and the hook — no per-modal animation code. All dialog animation is disabled under `prefers-reduced-motion: reduce`.
+
 ## Do's and Don'ts
 
 ### Do:

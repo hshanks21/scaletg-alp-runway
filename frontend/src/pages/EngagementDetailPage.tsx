@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
+import { useDialogTransition } from '../hooks/useDialogTransition';
 
 interface EngagementDetail {
   id: string;
@@ -162,6 +163,10 @@ export function EngagementDetailPage() {
   const [busy, setBusy] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
+  const { closing: rejectClosing, requestClose: requestRejectClose } = useDialogTransition(() => {
+    setRejectOpen(false);
+    setRejectComment('');
+  });
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'danger' } | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -206,8 +211,7 @@ export function EngagementDetailPage() {
       const d = await r.json();
       if (d.success) {
         setEngagement(prev => (prev ? { ...prev, ...d.data } : d.data));
-        setRejectOpen(false);
-        setRejectComment('');
+        requestRejectClose();
         showToast('Engagement rejected', 'danger');
       } else {
         showToast(d.error || 'Reject failed', 'danger');
@@ -350,8 +354,8 @@ export function EngagementDetailPage() {
               borderRadius: '6px',
               border: 'none',
               cursor: 'pointer',
-              background: activeTab === tab.key ? '#1A1E1C' : 'transparent',
-              color: activeTab === tab.key ? '#E8ECE9' : '#9AA59D',
+              background: activeTab === tab.key ? 'var(--raised)' : 'transparent',
+              color: activeTab === tab.key ? 'var(--text)' : 'var(--muted)',
               borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
               transition: 'all 0.15s',
             }}
@@ -369,13 +373,15 @@ export function EngagementDetailPage() {
       {/* Reject dialog */}
       {rejectOpen && (
         <div
+          className={`runway-backdrop${rejectClosing ? ' is-closing' : ''}`}
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
           }}
-          onClick={e => { if (e.target === e.currentTarget) { setRejectOpen(false); setRejectComment(''); } }}
+          onClick={e => { if (e.target === e.currentTarget) requestRejectClose(); }}
         >
           <div
+            className={`runway-dialog${rejectClosing ? ' is-closing' : ''}`}
             style={{
               background: 'var(--panel)', border: '1px solid var(--line-strong)',
               borderRadius: '12px', padding: '22px', width: '420px', maxWidth: '90vw',
@@ -389,7 +395,7 @@ export function EngagementDetailPage() {
               autoFocus
               value={rejectComment}
               onChange={e => setRejectComment(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') { setRejectOpen(false); setRejectComment(''); } }}
+              onKeyDown={e => { if (e.key === 'Escape') requestRejectClose(); }}
               placeholder="Rejection comment (required)"
               rows={4}
               style={{
@@ -402,7 +408,7 @@ export function EngagementDetailPage() {
             />
             <div className="flex items-center justify-end gap-2" style={{ marginTop: '16px' }}>
               <button
-                onClick={() => { setRejectOpen(false); setRejectComment(''); }}
+                onClick={requestRejectClose}
                 disabled={busy}
                 style={{
                   background: 'transparent', color: 'var(--text)', fontSize: '12px',
