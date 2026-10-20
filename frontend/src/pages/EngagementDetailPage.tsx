@@ -354,8 +354,8 @@ export function EngagementDetailPage() {
               borderRadius: '6px',
               border: 'none',
               cursor: 'pointer',
-              background: activeTab === tab.key ? '#1A1E1C' : 'transparent',
-              color: activeTab === tab.key ? '#E8ECE9' : '#9AA59D',
+              background: activeTab === tab.key ? 'var(--raised)' : 'transparent',
+              color: activeTab === tab.key ? 'var(--text)' : 'var(--muted)',
               borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
               transition: 'all 0.15s',
             }}
@@ -518,9 +518,9 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                           flex: 1,
                           textAlign: 'center',
                           padding: '4px',
-                          background: parseFloat(p.hours) > 0 ? 'rgba(63,168,94,0.08)' : 'transparent',
+                          background: parseFloat(p.hours) > 0 ? 'var(--accent-soft)' : 'transparent',
                           borderRadius: '4px',
-                          color: parseFloat(p.hours) > 0 ? '#E8ECE9' : '#7C8780',
+                          color: parseFloat(p.hours) > 0 ? 'var(--text)' : 'var(--faint)',
                         }}
                       >
                         {parseFloat(p.hours) || '—'}
