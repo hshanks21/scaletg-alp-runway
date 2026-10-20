@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface Engagement {
@@ -145,9 +145,23 @@ function CreateEngagementModal({ onClose, onCreated }: { onClose: () => void; on
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const closeTimer = useRef<number | null>(null);
+
+  const requestClose = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    closeTimer.current = window.setTimeout(() => onClose(), 150);
+  };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !creating) onClose(); };
+    return () => { if (closeTimer.current !== null) window.clearTimeout(closeTimer.current); };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !creating) requestClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [creating, onClose]);
@@ -201,13 +215,15 @@ function CreateEngagementModal({ onClose, onCreated }: { onClose: () => void; on
 
   return (
     <div
+      className={`runway-backdrop${closing ? ' is-closing' : ''}`}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
       }}
-      onClick={e => { if (e.target === e.currentTarget && !creating) onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget && !creating) requestClose(); }}
     >
       <div
+        className={`runway-dialog${closing ? ' is-closing' : ''}`}
         style={{
           background: 'var(--panel)', border: '1px solid var(--line-strong)',
           borderRadius: '12px', padding: '22px', width: '540px', maxWidth: '90vw',
@@ -283,7 +299,7 @@ function CreateEngagementModal({ onClose, onCreated }: { onClose: () => void; on
 
         <div className="flex items-center justify-end gap-2" style={{ marginTop: '20px' }}>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             disabled={creating}
             style={{
               background: 'transparent', color: 'var(--text)', fontSize: '12px',
