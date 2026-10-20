@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDialogTransition } from '../hooks/useDialogTransition';
 
 interface Engagement {
   id: string;
@@ -145,26 +146,13 @@ function CreateEngagementModal({ onClose, onCreated }: { onClose: () => void; on
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [closing, setClosing] = useState(false);
-  const closingRef = useRef(false);
-  const closeTimer = useRef<number | null>(null);
-
-  const requestClose = () => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setClosing(true);
-    closeTimer.current = window.setTimeout(() => onClose(), 150);
-  };
-
-  useEffect(() => {
-    return () => { if (closeTimer.current !== null) window.clearTimeout(closeTimer.current); };
-  }, []);
+  const { closing, requestClose } = useDialogTransition(onClose);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !creating) requestClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [creating, onClose]);
+  }, [creating, requestClose]);
 
   const validate = () => {
     const e: Record<string, string> = {};
