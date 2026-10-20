@@ -37,11 +37,18 @@ export function AppLayout() {
   const location = useLocation();
   const { theme, toggle: toggleTheme } = useTheme();
 
-  useEffect(() => {
+  const loadEngagements = () => {
     fetch('/api/engagements')
       .then(r => r.json())
       .then(d => { if (d.success) setEngagements(d.data); })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    loadEngagements();
+    const refresh = () => loadEngagements();
+    window.addEventListener('runway:refresh-engagements', refresh);
+    return () => window.removeEventListener('runway:refresh-engagements', refresh);
   }, []);
 
   const sidebarActive = location.pathname === '/' || location.pathname.startsWith('/engagements');
