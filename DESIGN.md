@@ -32,6 +32,11 @@ colors:
   day-faint: "#5E665F"
   white: "#FFFFFF"
 typography:
+  display:
+    fontFamily: "Fraunces, Georgia, serif"
+    fontSize: "25px"
+    fontWeight: 600
+    letterSpacing: "-0.01em"
   headline:
     fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "16px"
@@ -202,14 +207,14 @@ A restrained, near-monochrome charcoal palette with one living accent (green) an
 
 ## Typography
 
-**Display Font:** none. The system has no display face.
+**Display Font:** Fraunces (editorial serif) — used for engagement titles (the `<h1>` on the engagement detail page, 600 / 25px / −0.01em tracking).
 **Body Font:** Inter (with system-ui, sans-serif)
 **Data Font:** Space Grotesk (numbers, fees, hours, dates)
 
-**Character:** Two typefaces, two jobs. Inter carries the interface — headings, labels, body and buttons. Space Grotesk handles data — numbers, fees, hours and dates — in tabular figures. Hierarchy comes from size and weight steps, plus uppercase tracked labels for section titles.
+**Character:** Three typefaces, three jobs. Inter carries the interface — headings, labels, body and buttons. Space Grotesk handles data — numbers, fees, hours and dates — in tabular figures. Fraunces (editorial serif) marks engagement titles. Hierarchy comes from size and weight steps, plus uppercase tracked labels for section titles.
 
 ### Hierarchy
-- **Headline** (500, 16px, 1.3): project names, page titles ("Dashboard", "Activity"), the task title in the detail panel and dialog titles.
+- **Headline** (500, 16px, 1.3): project names, page titles ("Dashboard", "Activity"), the task title in the detail panel and dialog titles. Engagement titles (the `<h1>` on the detail page) use the Display Font (Fraunces, 600 / 25px) instead.
 - **Summary** (400, 15px, 1.4): the one-line Overview summary ("4 of 11 done · 2 overdue · …"); the leading fact is bolded to 500 in Mist Text.
 - **Body** (400, 14px, 1.5): the base size for the app shell, nav items (12.5px in the sidebar) and the description field.
 - **Data** (Space Grotesk, 400, 12px, tabular figures): table cells, list rows, buttons, inputs, chips and legend items. Numbers align in columns.
