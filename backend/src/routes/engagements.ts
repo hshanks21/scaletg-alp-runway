@@ -10,6 +10,34 @@ import { calculateKPIs, formatKPIs, type ResourceAllocation, type EngagementFina
 
 const router = Router();
 
+// ── Period generation (mirrors backend/src/db/seeds/index.ts) ──
+function generatePeriods(startStr: string, endStr: string, periodType: string): { start: string; end: string }[] {
+  const periods: { start: string; end: string }[] = [];
+  const engEnd = new Date(endStr + 'T00:00:00Z');
+  let cursor = new Date(startStr + 'T00:00:00Z');
+  if (periodType === 'weekly') {
+    while (cursor <= engEnd) {
+      const weekStart = new Date(cursor);
+      const daysToSunday = (7 - weekStart.getUTCDay()) % 7;
+      const weekEnd = new Date(weekStart);
+      weekEnd.setUTCDate(weekEnd.getUTCDate() + daysToSunday);
+      const cappedEnd = weekEnd > engEnd ? engEnd : weekEnd;
+      periods.push({ start: weekStart.toISOString().slice(0, 10), end: cappedEnd.toISOString().slice(0, 10) });
+      cursor = new Date(cappedEnd);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  } else {
+    while (cursor <= engEnd) {
+      const monthStart = new Date(cursor);
+      const monthEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0));
+      const cappedEnd = monthEnd > engEnd ? engEnd : monthEnd;
+      periods.push({ start: monthStart.toISOString().slice(0, 10), end: cappedEnd.toISOString().slice(0, 10) });
+      cursor = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
+    }
+  }
+  return periods;
+}
+
 // ── GET /api/engagements — list with status filter ──
 
 router.get('/', async (req, res) => {
@@ -212,11 +240,23 @@ router.delete('/:id/tasks/:taskId', async (req, res) => {
 
 router.post('/:id/allocations', async (req, res) => {
   try {
+    const { id } = req.params;
     const { taskId, resourceId, engagementRate, placeholderCategoryId } = req.body;
 
     const [created] = await db.insert(allocations).values({
       taskId, resourceId, engagementRate, placeholderCategoryId,
     }).returning();
+
+    // Auto-generate allocation_periods from the engagement's date range + period type
+    const [eng] = await db.select().from(engagements).where(eq(engagements.id, id));
+    if (eng) {
+      const periods = generatePeriods(String(eng.startDate), String(eng.endDate), eng.periodType);
+      if (periods.length > 0) {
+        await db.insert(allocationPeriods).values(
+          periods.map((p) => ({ allocationId: created.id, periodStart: p.start, periodEnd: p.end, hours: '0' }))
+        );
+      }
+    }
 
     res.status(201).json({ success: true, data: created });
   } catch (err: any) {
@@ -243,6 +283,38 @@ router.patch('/:id/allocations/:allocId/periods', async (req, res) => {
     }
 
     res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── PATCH /api/engagements/:id/allocations/:allocId — update allocation rate ──
+
+router.patch('/:id/allocations/:allocId', async (req, res) => {
+  try {
+    const { allocId } = req.params;
+    const { engagementRate } = req.body;
+    if (engagementRate === undefined) {
+      return res.status(400).json({ success: false, error: 'engagementRate is required' });
+    }
+    const [updated] = await db.update(allocations)
+      .set({ engagementRate })
+      .where(eq(allocations.id, allocId))
+      .returning();
+    if (!updated) return res.status(404).json({ success: false, error: 'Allocation not found' });
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── DELETE /api/engagements/:id/allocations/:allocId — remove allocation ──
+
+router.delete('/:id/allocations/:allocId', async (req, res) => {
+  try {
+    const { allocId } = req.params;
+    await db.delete(allocations).where(eq(allocations.id, allocId));
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
