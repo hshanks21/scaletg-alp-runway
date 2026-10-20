@@ -250,7 +250,7 @@ export function EngagementDetailPage() {
       >
         <div>
           <div className="flex items-center gap-3">
-            <h1 style={{ fontSize: '16px', fontWeight: 500, color: 'var(--text)' }}>{engagement.name}</h1>
+            <h1 style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.01em' }}>{engagement.name}</h1>
             <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
             <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{engagement.clientName}</span>
           </div>
