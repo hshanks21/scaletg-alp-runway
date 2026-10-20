@@ -450,95 +450,273 @@ export function EngagementDetailPage() {
 
 // ── Budget View (Task → Resource → Hours grid) ──
 
+const budgetInputStyle: CSSProperties = {
+  fontSize: '11px',
+  padding: '3px 8px',
+  background: 'var(--panel)',
+  border: '1px solid var(--line-strong)',
+  borderRadius: '4px',
+  color: 'var(--text)',
+};
+
 function BudgetView({ engagement }: { engagement: EngagementDetail }) {
+  const [tasks, setTasks] = useState<any[]>(engagement.tasks || []);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [addingTask, setAddingTask] = useState(false);
+  const [newTask, setNewTask] = useState({ name: '', estimatedHours: '', startDate: '', numPeriods: '' });
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskName, setEditingTaskName] = useState('');
+  const [addResourceTaskId, setAddResourceTaskId] = useState<string | null>(null);
+  const [resourceQuery, setResourceQuery] = useState('');
+  const [resourceResults, setResourceResults] = useState<any[]>([]);
+  const [editingHours, setEditingHours] = useState<{ allocId: string; periodId: string; value: string } | null>(null);
+  const [editingRate, setEditingRate] = useState<{ allocId: string; value: string } | null>(null);
+
+  const bumpKpi = () => setRefreshToken((t) => t + 1);
+
+  const api = async (method: string, path: string, body?: unknown) => {
+    const r = await fetch(path, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return r.json();
+  };
+
+  const reload = async () => {
+    const d = await api('GET', `/api/engagements/${engagement.id}`);
+    if (d.success) setTasks(d.data.tasks || []);
+  };
+
+  // ── Tasks ──
+  const createTask = async () => {
+    if (!newTask.name.trim()) return;
+    await api('POST', `/api/engagements/${engagement.id}/tasks`, {
+      name: newTask.name.trim(),
+      estimatedHours: newTask.estimatedHours || undefined,
+      startDate: newTask.startDate || undefined,
+      numPeriods: newTask.numPeriods ? parseInt(newTask.numPeriods, 10) : undefined,
+      sortOrder: tasks.length,
+    });
+    setNewTask({ name: '', estimatedHours: '', startDate: '', numPeriods: '' });
+    setAddingTask(false);
+    await reload();
+    bumpKpi();
+  };
+
+  const saveTaskName = async (taskId: string) => {
+    if (!editingTaskName.trim()) { setEditingTaskId(null); return; }
+    await api('PATCH', `/api/engagements/${engagement.id}/tasks/${taskId}`, { name: editingTaskName.trim() });
+    setEditingTaskId(null);
+    await reload();
+    bumpKpi();
+  };
+
+  const moveTask = async (taskId: string, dir: -1 | 1) => {
+    const idx = tasks.findIndex((t) => t.id === taskId);
+    const swap = tasks[idx + dir];
+    if (idx < 0 || !swap) return;
+    await api('PATCH', `/api/engagements/${engagement.id}/tasks/${taskId}`, { sortOrder: swap.sortOrder });
+    await api('PATCH', `/api/engagements/${engagement.id}/tasks/${swap.id}`, { sortOrder: tasks[idx].sortOrder });
+    await reload();
+  };
+
+  const deleteTask = async (taskId: string) => {
+    if (!window.confirm('Delete this task and its resources?')) return;
+    await api('DELETE', `/api/engagements/${engagement.id}/tasks/${taskId}`);
+    await reload();
+    bumpKpi();
+  };
+
+  // ── Allocations ──
+  useEffect(() => {
+    if (!addResourceTaskId) return;
+    if (!resourceQuery.trim()) { setResourceResults([]); return; }
+    const t = window.setTimeout(async () => {
+      const d = await api('GET', `/api/resources?search=${encodeURIComponent(resourceQuery.trim())}`);
+      if (d.success) setResourceResults(d.data);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [resourceQuery, addResourceTaskId]);
+
+  const addResource = async (taskId: string, resource: any) => {
+    await api('POST', `/api/engagements/${engagement.id}/allocations`, {
+      taskId,
+      resourceId: resource.id,
+      engagementRate: resource.standardRate,
+    });
+    setAddResourceTaskId(null);
+    setResourceQuery('');
+    setResourceResults([]);
+    await reload();
+    bumpKpi();
+  };
+
+  const saveRate = async (allocId: string) => {
+    if (!editingRate || editingRate.allocId !== allocId) return;
+    await api('PATCH', `/api/engagements/${engagement.id}/allocations/${allocId}`, { engagementRate: editingRate.value });
+    setEditingRate(null);
+    await reload();
+    bumpKpi();
+  };
+
+  const saveHours = async () => {
+    if (!editingHours) return;
+    await api('PATCH', `/api/engagements/${engagement.id}/allocations/${editingHours.allocId}/periods`, {
+      periods: [{ id: editingHours.periodId, hours: editingHours.value }],
+    });
+    setEditingHours(null);
+    await reload();
+    bumpKpi();
+  };
+
+  const removeResource = async (allocId: string) => {
+    await api('DELETE', `/api/engagements/${engagement.id}/allocations/${allocId}`);
+    await reload();
+    bumpKpi();
+  };
+
+  const iconBtn: CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: 'var(--faint)', fontSize: '11px', padding: '2px 5px',
+  };
+
   return (
     <div>
-      {/* KPI summary line */}
-      <KpiSummaryLine engagementId={engagement.id} mode="budget" />
+      <KpiSummaryLine engagementId={engagement.id} mode="budget" refreshToken={refreshToken} />
 
-      {/* Tasks + Allocations */}
-      <div
-        style={{
-          background: 'var(--panel)',
-          borderRadius: '10px',
-          border: '1px solid var(--line)',
-          overflow: 'hidden',
-        }}
-      >
-        {(!engagement.tasks || engagement.tasks.length === 0) ? (
+      <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden' }}>
+        {tasks.length === 0 && !addingTask ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>
             No tasks yet. Click "+ Add Task" to start building the budget.
           </div>
         ) : (
-          engagement.tasks.map((task: any) => (
-            <div key={task.id} style={{ borderBottom: '1px solid var(--line)' }}>
-              {/* Task header */}
-              <div
-                className="flex items-center justify-between"
-                style={{ padding: '10px 20px', background: 'var(--raised)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <span style={{ fontSize: '12px', color: 'var(--accent)' }}>▼</span>
-                  <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)' }}>{task.name}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--faint)' }}>
-                    (est: {task.estimatedHours || 0}h → alloc: {task.allocatedHours?.toFixed(0) || 0}h)
-                  </span>
-                </div>
-              </div>
-
-              {/* Allocations */}
-              {task.allocations?.map((alloc: any) => (
-                <div
-                  key={alloc.id}
-                  className="flex items-center"
-                  style={{
-                    padding: '8px 20px 8px 40px',
-                    borderBottom: '1px solid var(--line)',
-                    fontSize: '12px',
-                  }}
-                >
-                  <div style={{ width: '200px', color: 'var(--text)' }}>
-                    {alloc.resourceName || 'Unknown'}
-                    <div style={{ fontSize: '11px', color: 'var(--faint)' }}>
-                      {alloc.categoryName} · ${parseFloat(alloc.standardRate || 0).toLocaleString()} std / ${parseFloat(alloc.engagementRate || 0).toLocaleString()} eng
-                    </div>
+          tasks.map((task, ti) => {
+            const hasAllocs = (task.allocations?.length || 0) > 0;
+            return (
+              <div key={task.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                <div style={{ padding: '8px 20px', background: 'var(--raised)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    <span style={{ fontSize: '12px', color: 'var(--accent)' }}>▼</span>
+                    {editingTaskId === task.id ? (
+                      <input
+                        autoFocus
+                        value={editingTaskName}
+                        onChange={(e) => setEditingTaskName(e.target.value)}
+                        onBlur={() => saveTaskName(task.id)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveTaskName(task.id); else if (e.key === 'Escape') setEditingTaskId(null); }}
+                        style={budgetInputStyle}
+                      />
+                    ) : (
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', cursor: 'pointer' }} onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); }}>
+                        {task.name}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '11px', color: hasAllocs ? 'var(--faint)' : 'var(--muted)', fontStyle: hasAllocs ? 'italic' : 'normal' }}>
+                      (est: {task.estimatedHours || 0}h → alloc: {task.allocatedHours?.toFixed(0) || 0}h)
+                    </span>
                   </div>
-                  <div className="flex gap-1 flex-1">
-                    {alloc.periods?.map((p: any) => (
-                      <div
-                        key={p.id}
-                        className="font-data"
-                        style={{
-                          flex: 1,
-                          textAlign: 'center',
-                          padding: '4px',
-                          background: parseFloat(p.hours) > 0 ? 'rgba(63,168,94,0.08)' : 'transparent',
-                          borderRadius: '4px',
-                          color: parseFloat(p.hours) > 0 ? '#E8ECE9' : '#7C8780',
-                        }}
-                      >
-                        {parseFloat(p.hours) || '—'}
+                  <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                    <button style={iconBtn} onClick={() => moveTask(task.id, -1)} disabled={ti === 0} title="Move up">↑</button>
+                    <button style={iconBtn} onClick={() => moveTask(task.id, 1)} disabled={ti === tasks.length - 1} title="Move down">↓</button>
+                    <button style={iconBtn} onClick={() => deleteTask(task.id)} title="Delete task">✕</button>
+                  </div>
+                </div>
+
+                {task.allocations?.map((alloc: any) => (
+                  <div key={alloc.id} style={{ padding: '8px 20px 8px 40px', borderBottom: '1px solid var(--line)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '220px', color: 'var(--text)', flexShrink: 0 }}>
+                      {alloc.resourceName || 'Unknown'}
+                      <div style={{ fontSize: '11px', color: 'var(--faint)' }}>
+                        {alloc.categoryName} · ${parseFloat(alloc.standardRate || 0).toLocaleString()} std /{' '}
+                        {editingRate?.allocId === alloc.id ? (
+                          <input
+                            autoFocus
+                            value={editingRate!.value}
+                            onChange={(e) => setEditingRate({ allocId: alloc.id, value: e.target.value })}
+                            onBlur={() => saveRate(alloc.id)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') saveRate(alloc.id); else if (e.key === 'Escape') setEditingRate(null); }}
+                            style={{ ...budgetInputStyle, width: '64px' }}
+                          />
+                        ) : (
+                          <span style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={() => setEditingRate({ allocId: alloc.id, value: alloc.engagementRate })}>
+                            ${parseFloat(alloc.engagementRate || 0).toLocaleString()}
+                          </span>
+                        )}{' '}
+                        eng
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                    </div>
 
-              {/* Add Resource */}
-              <div style={{ padding: '6px 20px 6px 40px' }}>
-                <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                  + Add Resource
-                </button>
+                    <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
+                      {alloc.periods?.map((p: any) => {
+                        const val = parseFloat(p.hours || '0');
+                        return (
+                          <div key={p.id} className="font-data" style={{ flex: 1, textAlign: 'center', padding: '4px', background: val > 0 ? 'var(--accent-soft)' : 'transparent', borderRadius: '4px', color: val > 0 ? 'var(--text)' : 'var(--faint)' }}>
+                            {editingHours?.periodId === p.id ? (
+                              <input
+                                autoFocus
+                                value={editingHours!.value}
+                                onChange={(e) => setEditingHours({ allocId: alloc.id, periodId: p.id, value: e.target.value })}
+                                onBlur={() => saveHours()}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); else if (e.key === 'Escape') setEditingHours(null); }}
+                                style={{ ...budgetInputStyle, width: '100%', textAlign: 'center', padding: '2px 4px' }}
+                              />
+                            ) : (
+                              <span style={{ cursor: 'pointer' }} onClick={() => setEditingHours({ allocId: alloc.id, periodId: p.id, value: p.hours })}>
+                                {val || '—'}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button style={iconBtn} onClick={() => removeResource(alloc.id)} title="Remove resource">✕</button>
+                  </div>
+                ))}
+
+                <div style={{ padding: '6px 20px 6px 40px' }}>
+                  {addResourceTaskId === task.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                      <input
+                        autoFocus
+                        value={resourceQuery}
+                        onChange={(e) => setResourceQuery(e.target.value)}
+                        placeholder="Search resources by name…"
+                        style={{ ...budgetInputStyle, width: '260px' }}
+                      />
+                      {resourceResults.slice(0, 8).map((r: any) => (
+                        <button key={r.id} onClick={() => addResource(task.id, r)} style={{ textAlign: 'left', fontSize: '11px', color: 'var(--text)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: '4px', padding: '5px 10px', cursor: 'pointer' }}>
+                          {r.name} <span style={{ color: 'var(--faint)' }}>· {r.categoryName} · ${parseFloat(r.standardRate).toLocaleString()}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setAddResourceTaskId(task.id)}>
+                      + Add Resource
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
 
-        {/* Add Task */}
         <div style={{ padding: '10px 20px', borderTop: '1px dashed var(--line)' }}>
-          <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>
-            + Add Task
-          </button>
+          {addingTask ? (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input autoFocus value={newTask.name} onChange={(e) => setNewTask({ ...newTask, name: e.target.value })} placeholder="Task name" style={{ ...budgetInputStyle, width: '180px' }} />
+              <input value={newTask.estimatedHours} onChange={(e) => setNewTask({ ...newTask, estimatedHours: e.target.value })} placeholder="Est. hours" type="number" style={{ ...budgetInputStyle, width: '90px' }} />
+              <input value={newTask.startDate} onChange={(e) => setNewTask({ ...newTask, startDate: e.target.value })} type="date" style={budgetInputStyle} />
+              <input value={newTask.numPeriods} onChange={(e) => setNewTask({ ...newTask, numPeriods: e.target.value })} placeholder="# periods" type="number" style={{ ...budgetInputStyle, width: '80px' }} />
+              <button onClick={createTask} style={{ fontSize: '11px', color: '#fff', background: 'var(--accent-btn)', border: 'none', borderRadius: '4px', padding: '4px 12px', cursor: 'pointer' }}>Add</button>
+              <button onClick={() => setAddingTask(false)} style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          ) : (
+            <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setAddingTask(true)}>
+              + Add Task
+            </button>
+          )}
         </div>
       </div>
     </div>
