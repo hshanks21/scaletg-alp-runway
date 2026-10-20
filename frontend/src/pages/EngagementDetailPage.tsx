@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useDialogTransition } from '../hooks/useDialogTransition';
+import * as XLSX from 'xlsx';
 
 interface EngagementDetail {
   id: string;
@@ -31,6 +32,31 @@ function formatCurrency(n: string | number): string {
   if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
   if (num >= 1_000) return `$${(num / 1_000).toFixed(0)}K`;
   return `$${num.toLocaleString()}`;
+}
+
+// ── Excel export helpers (RUN-8) ──
+
+function sanitizeFilename(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned || 'Engagement';
+}
+
+function localDateStr(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+function num(v: unknown): number {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') { const p = parseFloat(v); return Number.isFinite(p) ? p : 0; }
+  return 0;
+}
+
+function toPct(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  return num(v) * 100;
 }
 
 
@@ -65,10 +91,20 @@ const KPI_LINE_STYLE: CSSProperties = {
   borderRadius: '10px',
   padding: '12px 20px',
   border: '1px solid var(--line)',
-  marginBottom: '14px',
   fontSize: '13px',
   color: 'var(--muted)',
   fontFeatureSettings: '"tnum" 1',
+};
+
+const exportBtnStyle: CSSProperties = {
+  fontSize: '12px',
+  color: 'var(--text)',
+  background: 'transparent',
+  border: '1px solid var(--line-strong)',
+  borderRadius: '6px',
+  padding: '6px 12px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 };
 
 // Margin % status color: accent (green) >=20%, hi (rust) <10%, muted (sage) 10-20%.
@@ -78,7 +114,7 @@ function marginColor(pct: number): string {
   return 'var(--muted)';
 }
 
-function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId: string; mode: 'budget' | 'bva'; refreshToken?: number }) {
+function useKpis(engagementId: string, mode: 'budget' | 'bva', refreshToken = 0): KpiData | null {
   const [kpis, setKpis] = useState<KpiData | null>(null);
 
   useEffect(() => {
@@ -91,6 +127,10 @@ function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId
     return () => { cancelled = true; };
   }, [engagementId, mode, refreshToken]);
 
+  return kpis;
+}
+
+function KpiSummaryLine({ kpis, mode }: { kpis: KpiData | null; mode: 'budget' | 'bva' }) {
   if (!kpis) {
     return (
       <div style={KPI_LINE_STYLE}>
@@ -140,6 +180,63 @@ function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId
       <span>Below Dir: {pct(b.pctBelowDirector)} → {pct(f.pctBelowDirector)}</span>
     </div>
   );
+}
+
+function exportBudgetXlsx(engagement: EngagementDetail, tasks: any[], kpis: KpiData | null) {
+  const allocs = tasks.flatMap((t: any) =>
+    (t.allocations || []).map((a: any) => ({ taskName: t.name, ...a })),
+  );
+  const periodCount = Math.max(0, ...allocs.map((a: any) => (a.periods || []).length));
+
+  const header: any[] = ['Task', 'Resource', 'Category', 'Rate (Eng)'];
+  for (let i = 1; i <= periodCount; i++) header.push(`P${i}`);
+  header.push('Total Hours');
+
+  const rows: any[][] = [header];
+  const periodTotals: number[] = new Array(periodCount).fill(0);
+  let grandTotal = 0;
+
+  for (const a of allocs) {
+    const periods = a.periods || [];
+    const row: any[] = [
+      a.taskName,
+      a.resourceName || 'Unknown',
+      a.categoryName || '',
+      num(a.engagementRate),
+    ];
+    let rowTotal = 0;
+    for (let i = 0; i < periodCount; i++) {
+      const h = num(periods[i]?.hours);
+      row.push(h);
+      periodTotals[i] += h;
+      rowTotal += h;
+    }
+    row.push(rowTotal);
+    grandTotal += rowTotal;
+    rows.push(row);
+  }
+
+  const totalsRow: any[] = ['', 'Total', '', ''];
+  for (let i = 0; i < periodCount; i++) totalsRow.push(periodTotals[i]);
+  totalsRow.push(grandTotal);
+  rows.push(totalsRow);
+
+  const f = kpis?.forecast;
+  rows.push([]);
+  rows.push(['KPI Summary']);
+  if (f) {
+    rows.push(['Revenue', num(f.estTotalRevenue)]);
+    rows.push(['Margin', num(f.estimatedMargin)]);
+    rows.push(['Margin %', num(f.estimatedMarginPct) * 100]);
+    rows.push(['Realization %', num(f.realization) * 100]);
+    rows.push(['Leverage (Staff/PMD)', num(f.staffPmdHours)]);
+    rows.push(['% Below Director', num(f.pctBelowDirector) * 100]);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Budget');
+  XLSX.writeFile(wb, `${sanitizeFilename(engagement.name)}_Budget_${localDateStr()}.xlsx`);
 }
 
 export function EngagementDetailPage() {
@@ -479,6 +576,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   const [editingRate, setEditingRate] = useState<{ allocId: string; value: string } | null>(null);
 
   const bumpKpi = () => setRefreshToken((t) => t + 1);
+  const kpis = useKpis(engagement.id, 'budget', refreshToken);
 
   const api = async (method: string, path: string, body?: unknown) => {
     const r = await fetch(path, {
@@ -589,7 +687,10 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
 
   return (
     <div>
-      <KpiSummaryLine engagementId={engagement.id} mode="budget" refreshToken={refreshToken} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '14px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}><KpiSummaryLine kpis={kpis} mode="budget" /></div>
+        <button onClick={() => exportBudgetXlsx(engagement, tasks, kpis)} style={exportBtnStyle}>Export</button>
+      </div>
 
       <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden' }}>
         {tasks.length === 0 && !addingTask ? (
@@ -788,11 +889,103 @@ function recomputeTotals(periods: BvAPeriodData[]): { budget: BvAMetrics; actual
   return { budget: sum('budget'), actual: sum('actual'), forecast: sum('forecast') };
 }
 
+function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
+  const { periods, resources } = data;
+  const eng: any = data.engagement || {};
+  const periodType: string = eng.periodType || 'weekly';
+  const n = (v: any) => parseFloat(v ?? '0') || 0;
+
+  const periodLabel = (p: BvAPeriod, i: number): string => {
+    if (periodType === 'monthly') {
+      const d = new Date(`${p.start}T00:00:00`);
+      return isNaN(d.getTime()) ? `P${i + 1}` : d.toLocaleString('en-US', { month: 'short' });
+    }
+    return `Wk ${i + 1}`;
+  };
+
+  const header: any[] = ['Resource', 'Metric', 'Title', 'Region', 'Rate (std)', 'Rate (eng)'];
+  periods.forEach((p, i) => { header.push(`${periodLabel(p, i)} Hrs`, `${periodLabel(p, i)} Fee`); });
+  header.push('Total Hrs', 'Total Fee');
+
+  const rows: any[][] = [header];
+
+  for (const r of resources) {
+    (['budget', 'actual', 'forecast'] as const).forEach((k) => {
+      const metricLabel = k === 'budget' ? 'Budget' : k === 'actual' ? 'Actuals' : 'Forecast';
+      const row: any[] = [
+        r.resourceName || 'Unknown',
+        metricLabel,
+        r.categoryName || '—',
+        r.region || '—',
+        n(r.standardRate),
+        n(r.engagementRate),
+      ];
+      for (const pd of r.periods) row.push(pd[k].hours, pd[k].feesAtStd);
+      row.push(r.totals[k].hours, r.totals[k].feesAtStd);
+      rows.push(row);
+    });
+  }
+
+  // Totals (Budget / Actuals / Forecast) across all resources per period
+  (['budget', 'actual', 'forecast'] as const).forEach((k) => {
+    const metricLabel = k === 'budget' ? 'Budget' : k === 'actual' ? 'Actuals' : 'Forecast';
+    const row: any[] = ['Total', metricLabel, '', '', '', ''];
+    let tHrs = 0;
+    let tFee = 0;
+    for (let i = 0; i < periods.length; i++) {
+      let h = 0;
+      let f = 0;
+      for (const r of resources) {
+        const pd = r.periods[i];
+        if (pd) { h += pd[k].hours; f += pd[k].feesAtStd; }
+      }
+      row.push(h, f);
+      tHrs += h;
+      tFee += f;
+    }
+    row.push(tHrs, tFee);
+    rows.push(row);
+  });
+
+  // Revenue / Cost adjustments
+  const budgetedRevenue = n(eng.agreedBaseFees) + n(eng.contingentFees);
+  const forecastedRevenue = budgetedRevenue + n(eng.agreedBaseFeesAdj) + n(eng.contingentFeesAdj);
+  const budgetedExpenses = n(eng.expensesBudget);
+  const forecastedExpenses = budgetedExpenses + n(eng.expenseAdj);
+  const budgetedETS = n(eng.etsBudget) + n(eng.digitalToolsBudget);
+  const forecastedETS = budgetedETS + n(eng.digitalToolsAdj) + n(eng.etsCostsAdj);
+
+  rows.push([]);
+  rows.push(['Revenue / Cost Adjustments', '', '', 'Budgeted', 'Adjustment', 'Forecasted']);
+  rows.push(['Revenue', '', '', budgetedRevenue, forecastedRevenue - budgetedRevenue, forecastedRevenue]);
+  rows.push(['Expenses', '', '', budgetedExpenses, forecastedExpenses - budgetedExpenses, forecastedExpenses]);
+  rows.push(['ETS', '', '', budgetedETS, forecastedETS - budgetedETS, forecastedETS]);
+
+  // KPI summary (Budget | Forecast | Variance)
+  const b = kpis?.budget;
+  const f = kpis?.forecast;
+  const v = kpis?.variance;
+  rows.push([]);
+  rows.push(['KPI Summary', 'Budget', 'Forecast', 'Variance']);
+  if (b && f && v) {
+    rows.push(['Margin %', toPct(b.marginPct) ?? '—', toPct(f.estimatedMarginPct) ?? '—', v.marginPct ?? '—']);
+    rows.push(['Realization %', toPct(b.realization) ?? '—', toPct(f.realization) ?? '—', v.realization ?? '—']);
+    rows.push(['Leverage (Staff/PMD)', b.staffPmdHours ?? '—', f.staffPmdHours ?? '—', v.staffPmdHours ?? '—']);
+    rows.push(['% Below Director', toPct(b.pctBelowDirector) ?? '—', toPct(f.pctBelowDirector) ?? '—', v.pctBelowDirector ?? '—']);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'BvA');
+  XLSX.writeFile(wb, `${sanitizeFilename(eng.name || 'Engagement')}_BvA_${localDateStr()}.xlsx`);
+}
+
 function BvaView({ engagementId, tasks }: { engagementId: string; tasks: any[] }) {
   const [data, setData] = useState<BvAResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
+  const kpis = useKpis(engagementId, 'bva', refreshToken);
 
   // Forecast inline editing
   const [editing, setEditing] = useState<{ resourceId: string; periodStart: string; periodEnd: string } | null>(null);
@@ -1130,7 +1323,10 @@ function BvaView({ engagementId, tasks }: { engagementId: string; tasks: any[] }
 
   return (
     <div>
-      <KpiSummaryLine engagementId={engagementId} mode="bva" refreshToken={refreshToken} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '14px' }}>
+        <div style={{ flex: 1, minWidth: 0 }}><KpiSummaryLine kpis={kpis} mode="bva" /></div>
+        <button onClick={() => exportBvaXlsx(data, kpis)} style={exportBtnStyle}>Export</button>
+      </div>
 
       {/* Engagement Details Summary */}
       <div style={{ background: 'var(--panel)', borderRadius: '10px', border: `1px solid ${hairline}`, padding: '14px 20px', marginBottom: '14px' }}>
