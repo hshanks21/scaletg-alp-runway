@@ -120,10 +120,11 @@ function dataStyle(opts: { alt: boolean; align?: 'left' | 'right' | 'center'; bo
 }
 
 // Total row: bold navy on light blue-gray, medium navy top+bottom borders.
-function totalStyle(align: 'left' | 'right' | 'center', numFmt?: string): XlStyle {
+// Optional fill overrides the default total fill (used to color-code Budget/Actuals/Forecast).
+function totalStyle(align: 'left' | 'right' | 'center', numFmt?: string, fill?: string): XlStyle {
   const s: XlStyle = {
     font: xlFont(10, { bold: true, color: XL.navy }),
-    fill: xlFill(XL.totalFill),
+    fill: xlFill(fill || XL.totalFill),
     alignment: { horizontal: align, vertical: 'middle' },
     border: xlEdges({ top: { style: 'medium', rgb: XL.navy }, bottom: { style: 'medium', rgb: XL.navy } }),
   };
@@ -1127,16 +1128,22 @@ async function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
     });
   }
 
-  // Totals (Budget / Actuals / Forecast)
+  // Totals (Budget / Actuals / Forecast) — one color per line (matches the reference example).
+  const METRIC_FILLS: Record<'budget' | 'actual' | 'forecast', string> = {
+    budget: 'FF95B3D7',   // blue
+    actual: 'FF92D050',   // green
+    forecast: 'FFFABF8F', // orange
+  };
   (['budget', 'actual', 'forecast'] as const).forEach((k) => {
     const metricLabel = k === 'budget' ? 'Budget' : k === 'actual' ? 'Actuals' : 'Forecast';
+    const fill = METRIC_FILLS[k];
     const row: Array<[any, XlStyle | null]> = [
-      ['Total', totalStyle('left')],
-      [metricLabel, totalStyle('left')],
-      ['', totalStyle('left')],
-      ['', totalStyle('left')],
-      ['', totalStyle('left')],
-      ['', totalStyle('left')],
+      ['Total', totalStyle('left', undefined, fill)],
+      [metricLabel, totalStyle('left', undefined, fill)],
+      ['', totalStyle('left', undefined, fill)],
+      ['', totalStyle('left', undefined, fill)],
+      ['', totalStyle('left', undefined, fill)],
+      ['', totalStyle('left', undefined, fill)],
     ];
     let tHrs = 0;
     let tFee = 0;
@@ -1147,13 +1154,13 @@ async function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
         const pd = r.periods[i];
         if (pd) { h += pd[k].hours; f += pd[k].feesAtStd; }
       }
-      row.push([h, totalStyle('right', FMT.hours)]);
-      row.push([f, totalStyle('right', FMT.currency2)]);
+      row.push([h, totalStyle('right', FMT.hours, fill)]);
+      row.push([f, totalStyle('right', FMT.currency2, fill)]);
       tHrs += h;
       tFee += f;
     }
-    row.push([tHrs, totalStyle('right', FMT.hours)]);
-    row.push([tFee, totalStyle('right', FMT.currency2)]);
+    row.push([tHrs, totalStyle('right', FMT.hours, fill)]);
+    row.push([tFee, totalStyle('right', FMT.currency2, fill)]);
     cells.push(row);
   });
 
