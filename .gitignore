@@ -16,3 +16,6 @@ infra/*.env
 *.log
 .idea/
 .vscode/
+
+# TypeScript build cache
+*.tsbuildinfo

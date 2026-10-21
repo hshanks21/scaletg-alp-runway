@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { useDialogTransition } from '../hooks/useDialogTransition';
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
 
 interface EngagementDetail {
   id: string;
@@ -54,9 +54,162 @@ function num(v: unknown): number {
   return 0;
 }
 
-function toPct(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  return num(v) * 100;
+// ── Excel formatting (RUN-8) — matches Engagement_Tracker_Budget_Formatted reference ──
+
+type XlStyle = Record<string, any>;
+
+const XL = {
+  navy: 'FF1F3864',
+  navySoft: 'FFD6E4F7',
+  altRow: 'FFF2F5FA',
+  totalFill: 'FFDCE4F0',
+  borderGray: 'FFD0D7E2',
+  white: 'FFFFFFFF',
+  labelGray: 'FF404040',
+  purpleFill: 'FFE8D5F2',
+  purpleFont: 'FF5B2A86',
+  greenFill: 'FFDFF0E0',
+  greenFont: 'FF2E6B30',
+};
+
+// Category → accent color (Director/PMD/Consultant). Unknown categories fall back to navy/blue.
+function categoryStyle(name: string): { fill: string; font: string } {
+  const key = (name || '').toLowerCase();
+  if (key.includes('pmd')) return { fill: XL.purpleFill, font: XL.purpleFont };
+  if (key.includes('consultant')) return { fill: XL.greenFill, font: XL.greenFont };
+  return { fill: XL.navySoft, font: XL.navy };
+}
+
+function xlFont(sz: number, o: { bold?: boolean; color?: string } = {}): any {
+  const f: any = { name: 'Arial', size: sz };
+  if (o.bold) f.bold = true;
+  if (o.color) f.color = { argb: o.color };
+  return f;
+}
+
+function xlFill(rgb: string): any {
+  return { type: 'pattern', pattern: 'solid', fgColor: { argb: rgb } };
+}
+
+function xlEdges(edges: Record<string, { style: string; rgb: string }>): any {
+  const b: any = {};
+  for (const k of Object.keys(edges)) b[k] = { style: edges[k].style, color: { argb: edges[k].rgb } };
+  return b;
+}
+
+// Header band: bold white Arial on navy, medium navy bottom border.
+function headerStyle(align: 'left' | 'right' | 'center'): XlStyle {
+  return {
+    font: xlFont(10, { bold: true, color: XL.white }),
+    fill: xlFill(XL.navy),
+    alignment: { horizontal: align, vertical: 'middle', wrapText: true },
+    border: xlEdges({ bottom: { style: 'medium', rgb: XL.navy } }),
+  };
+}
+
+// Data row: thin gray bottom border, optional alternating fill.
+function dataStyle(opts: { alt: boolean; align?: 'left' | 'right' | 'center'; bold?: boolean; numFmt?: string } = { alt: false }): XlStyle {
+  const s: XlStyle = {
+    font: xlFont(10, { bold: opts.bold }),
+    alignment: { horizontal: opts.align || 'left', vertical: 'middle' },
+    border: xlEdges({ bottom: { style: 'thin', rgb: XL.borderGray } }),
+  };
+  if (opts.alt) s.fill = xlFill(XL.altRow);
+  if (opts.numFmt) s.numFmt = opts.numFmt;
+  return s;
+}
+
+// Total row: bold navy on light blue-gray, medium navy top+bottom borders.
+function totalStyle(align: 'left' | 'right' | 'center', numFmt?: string): XlStyle {
+  const s: XlStyle = {
+    font: xlFont(10, { bold: true, color: XL.navy }),
+    fill: xlFill(XL.totalFill),
+    alignment: { horizontal: align, vertical: 'middle' },
+    border: xlEdges({ top: { style: 'medium', rgb: XL.navy }, bottom: { style: 'medium', rgb: XL.navy } }),
+  };
+  if (numFmt) s.numFmt = numFmt;
+  return s;
+}
+
+// KPI section header: bold white Arial 11 on navy.
+function kpiHeaderStyle(): XlStyle {
+  return {
+    font: xlFont(11, { bold: true, color: XL.white }),
+    fill: xlFill(XL.navy),
+    alignment: { horizontal: 'left', vertical: 'middle' },
+  };
+}
+
+// KPI label / value pairs.
+function kpiLabelStyle(alt: boolean): XlStyle {
+  return {
+    font: xlFont(10, { color: XL.labelGray }),
+    ...(alt ? { fill: xlFill(XL.altRow) } : {}),
+    alignment: { horizontal: 'left', vertical: 'middle' },
+  };
+}
+function kpiValueStyle(alt: boolean, numFmt: string): XlStyle {
+  return {
+    font: xlFont(11, { bold: true, color: XL.navy }),
+    ...(alt ? { fill: xlFill(XL.altRow) } : {}),
+    alignment: { horizontal: 'right', vertical: 'middle' },
+    numFmt,
+  };
+}
+
+// Number formats (mirror the reference numFmts).
+const FMT = {
+  currency2: '$#,##0.00',   // engagement rate
+  hours: '#,##0.00;(#,##0.00);–', // period hours (zero → dash)
+  currency0: '$#,##0',      // KPI revenue/margin
+  pct: '0.0%',              // KPI percentages
+  leverage: '0.0"x"',       // KPI leverage
+};
+
+// Write a fully-styled worksheet and trigger a client-side download.
+async function writeXlsx(
+  sheetName: string,
+  cells: Array<Array<[any, XlStyle | null]>>,
+  colWidths: number[],
+  rowHeights: { r: number; ht: number }[],
+  filename: string,
+) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Runway';
+  const ws = wb.addWorksheet(sheetName);
+  ws.columns = colWidths.map(w => ({ width: w }));
+  ws.properties.defaultRowHeight = 19.5;
+  ws.views = [{ state: 'frozen', ySplit: 1, showGridLines: false }];
+  ws.properties.tabColor = { argb: XL.navy };
+
+  cells.forEach((row, r) => {
+    row.forEach(([v, s], c) => {
+      const hasValue = v !== '' && v !== null && v !== undefined;
+      if (!hasValue && s == null) return;
+      const cell = ws.getCell(r + 1, c + 1);
+      if (hasValue) cell.value = v;
+      if (s) {
+        if (s.font) cell.font = s.font;
+        if (s.fill) cell.fill = s.fill;
+        if (s.border) cell.border = s.border;
+        if (s.alignment) cell.alignment = s.alignment;
+        if (s.numFmt) cell.numFmt = s.numFmt;
+      }
+    });
+  });
+
+  for (const rh of rowHeights) ws.getRow(rh.r + 1).height = rh.ht;
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 
@@ -182,61 +335,87 @@ function KpiSummaryLine({ kpis, mode }: { kpis: KpiData | null; mode: 'budget' |
   );
 }
 
-function exportBudgetXlsx(engagement: EngagementDetail, tasks: any[], kpis: KpiData | null) {
+async function exportBudgetXlsx(engagement: EngagementDetail, tasks: any[], kpis: KpiData | null) {
   const allocs = tasks.flatMap((t: any) =>
     (t.allocations || []).map((a: any) => ({ taskName: t.name, ...a })),
   );
   const periodCount = Math.max(0, ...allocs.map((a: any) => (a.periods || []).length));
 
-  const header: any[] = ['Task', 'Resource', 'Category', 'Rate (Eng)'];
-  for (let i = 1; i <= periodCount; i++) header.push(`P${i}`);
-  header.push('Total Hours');
+  // Column widths: Task, Resource, Category, Rate, periods, Total Hours.
+  const colWidths = [24, 22, 14, 13];
+  for (let i = 0; i < periodCount; i++) colWidths.push(10);
+  colWidths.push(13);
 
-  const rows: any[][] = [header];
+  const header: Array<[any, XlStyle | null]> = [
+    ['Task', headerStyle('left')],
+    ['Resource', headerStyle('left')],
+    ['Category', headerStyle('center')],
+    ['Rate (Eng)', headerStyle('right')],
+  ];
+  for (let i = 1; i <= periodCount; i++) header.push([`P${i}`, headerStyle('right')]);
+  header.push(['Total Hours', headerStyle('right')]);
+
+  const cells: Array<Array<[any, XlStyle | null]>> = [header];
   const periodTotals: number[] = new Array(periodCount).fill(0);
   let grandTotal = 0;
 
-  for (const a of allocs) {
+  allocs.forEach((a: any, idx: number) => {
+    const alt = idx % 2 === 1;
     const periods = a.periods || [];
-    const row: any[] = [
-      a.taskName,
-      a.resourceName || 'Unknown',
-      a.categoryName || '',
-      num(a.engagementRate),
+    const cst = categoryStyle(a.categoryName || '');
+    const row: Array<[any, XlStyle | null]> = [
+      [a.taskName, dataStyle({ alt })],
+      [a.resourceName || 'Unknown', dataStyle({ alt })],
+      [a.categoryName || '—', {
+        font: xlFont(9, { bold: true, color: cst.font }),
+        fill: xlFill(cst.fill),
+        alignment: { horizontal: 'center', vertical: 'middle' },
+        border: xlEdges({ bottom: { style: 'thin', rgb: XL.borderGray } }),
+      }],
+      [num(a.engagementRate), dataStyle({ alt, align: 'right', numFmt: FMT.currency2 })],
     ];
     let rowTotal = 0;
     for (let i = 0; i < periodCount; i++) {
       const h = num(periods[i]?.hours);
-      row.push(h);
+      row.push([h, dataStyle({ alt, align: 'right', numFmt: FMT.hours })]);
       periodTotals[i] += h;
       rowTotal += h;
     }
-    row.push(rowTotal);
+    row.push([rowTotal, dataStyle({ alt, align: 'right', bold: true, numFmt: FMT.hours })]);
     grandTotal += rowTotal;
-    rows.push(row);
-  }
+    cells.push(row);
+  });
 
-  const totalsRow: any[] = ['', 'Total', '', ''];
-  for (let i = 0; i < periodCount; i++) totalsRow.push(periodTotals[i]);
-  totalsRow.push(grandTotal);
-  rows.push(totalsRow);
+  const totalsRow: Array<[any, XlStyle | null]> = [
+    ['', null],
+    ['Total', totalStyle('left')],
+    ['', totalStyle('left')],
+    ['', null],
+  ];
+  for (let i = 0; i < periodCount; i++) totalsRow.push([periodTotals[i], totalStyle('right', FMT.hours)]);
+  totalsRow.push([grandTotal, totalStyle('right', FMT.hours)]);
+  cells.push(totalsRow);
 
+  // Blank spacer, then KPI summary section.
+  cells.push([['', null]]);
+  cells.push([['KPI Summary', kpiHeaderStyle()], ['', kpiHeaderStyle()]]);
   const f = kpis?.forecast;
-  rows.push([]);
-  rows.push(['KPI Summary']);
   if (f) {
-    rows.push(['Revenue', num(f.estTotalRevenue)]);
-    rows.push(['Margin', num(f.estimatedMargin)]);
-    rows.push(['Margin %', num(f.estimatedMarginPct) * 100]);
-    rows.push(['Realization %', num(f.realization) * 100]);
-    rows.push(['Leverage (Staff/PMD)', num(f.staffPmdHours)]);
-    rows.push(['% Below Director', num(f.pctBelowDirector) * 100]);
+    const kpiRows: Array<[string, number, string]> = [
+      ['Revenue', num(f.estTotalRevenue), FMT.currency0],
+      ['Margin', num(f.estimatedMargin), FMT.currency0],
+      ['Margin %', num(f.estimatedMarginPct), FMT.pct],
+      ['Realization %', num(f.realization), FMT.pct],
+      ['Leverage (Staff/PMD)', num(f.staffPmdHours), FMT.leverage],
+      ['% Below Director', num(f.pctBelowDirector), FMT.pct],
+    ];
+    kpiRows.forEach(([label, val, fmt], i) => {
+      const alt = i % 2 === 1;
+      cells.push([[label, kpiLabelStyle(alt)], [val, kpiValueStyle(alt, fmt)]]);
+    });
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Budget');
-  XLSX.writeFile(wb, `${sanitizeFilename(engagement.name)}_Budget_${localDateStr()}.xlsx`);
+  await writeXlsx('Budget', cells, colWidths, [{ r: 0, ht: 25.5 }], `${sanitizeFilename(engagement.name)}_Budget_${localDateStr()}.xlsx`);
 }
 
 export function EngagementDetailPage() {
@@ -889,7 +1068,7 @@ function recomputeTotals(periods: BvAPeriodData[]): { budget: BvAMetrics; actual
   return { budget: sum('budget'), actual: sum('actual'), forecast: sum('forecast') };
 }
 
-function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
+async function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
   const { periods, resources } = data;
   const eng: any = data.engagement || {};
   const periodType: string = eng.periodType || 'weekly';
@@ -903,33 +1082,62 @@ function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
     return `Wk ${i + 1}`;
   };
 
-  const header: any[] = ['Resource', 'Metric', 'Title', 'Region', 'Rate (std)', 'Rate (eng)'];
-  periods.forEach((p, i) => { header.push(`${periodLabel(p, i)} Hrs`, `${periodLabel(p, i)} Fee`); });
-  header.push('Total Hrs', 'Total Fee');
+  const colWidths = [22, 11, 14, 12, 13, 13];
+  periods.forEach(() => { colWidths.push(10, 12); });
+  colWidths.push(13, 13);
 
-  const rows: any[][] = [header];
+  const header: Array<[any, XlStyle | null]> = [
+    ['Resource', headerStyle('left')],
+    ['Metric', headerStyle('left')],
+    ['Title', headerStyle('left')],
+    ['Region', headerStyle('left')],
+    ['Rate (std)', headerStyle('right')],
+    ['Rate (eng)', headerStyle('right')],
+  ];
+  periods.forEach((p, i) => {
+    header.push([`${periodLabel(p, i)} Hrs`, headerStyle('right')]);
+    header.push([`${periodLabel(p, i)} Fee`, headerStyle('right')]);
+  });
+  header.push(['Total Hrs', headerStyle('right')]);
+  header.push(['Total Fee', headerStyle('right')]);
+
+  const cells: Array<Array<[any, XlStyle | null]>> = [header];
+  let rowIdx = 0;
 
   for (const r of resources) {
     (['budget', 'actual', 'forecast'] as const).forEach((k) => {
+      const alt = rowIdx % 2 === 1;
       const metricLabel = k === 'budget' ? 'Budget' : k === 'actual' ? 'Actuals' : 'Forecast';
-      const row: any[] = [
-        r.resourceName || 'Unknown',
-        metricLabel,
-        r.categoryName || '—',
-        r.region || '—',
-        n(r.standardRate),
-        n(r.engagementRate),
+      const row: Array<[any, XlStyle | null]> = [
+        [r.resourceName || 'Unknown', dataStyle({ alt })],
+        [metricLabel, dataStyle({ alt })],
+        [r.categoryName || '—', dataStyle({ alt })],
+        [r.region || '—', dataStyle({ alt })],
+        [n(r.standardRate), dataStyle({ alt, align: 'right', numFmt: FMT.currency2 })],
+        [n(r.engagementRate), dataStyle({ alt, align: 'right', numFmt: FMT.currency2 })],
       ];
-      for (const pd of r.periods) row.push(pd[k].hours, pd[k].feesAtStd);
-      row.push(r.totals[k].hours, r.totals[k].feesAtStd);
-      rows.push(row);
+      for (const pd of r.periods) {
+        row.push([pd[k].hours, dataStyle({ alt, align: 'right', numFmt: FMT.hours })]);
+        row.push([pd[k].feesAtStd, dataStyle({ alt, align: 'right', numFmt: FMT.currency2 })]);
+      }
+      row.push([r.totals[k].hours, dataStyle({ alt, align: 'right', bold: true, numFmt: FMT.hours })]);
+      row.push([r.totals[k].feesAtStd, dataStyle({ alt, align: 'right', bold: true, numFmt: FMT.currency2 })]);
+      cells.push(row);
+      rowIdx++;
     });
   }
 
-  // Totals (Budget / Actuals / Forecast) across all resources per period
+  // Totals (Budget / Actuals / Forecast)
   (['budget', 'actual', 'forecast'] as const).forEach((k) => {
     const metricLabel = k === 'budget' ? 'Budget' : k === 'actual' ? 'Actuals' : 'Forecast';
-    const row: any[] = ['Total', metricLabel, '', '', '', ''];
+    const row: Array<[any, XlStyle | null]> = [
+      ['Total', totalStyle('left')],
+      [metricLabel, totalStyle('left')],
+      ['', totalStyle('left')],
+      ['', totalStyle('left')],
+      ['', totalStyle('left')],
+      ['', totalStyle('left')],
+    ];
     let tHrs = 0;
     let tFee = 0;
     for (let i = 0; i < periods.length; i++) {
@@ -939,12 +1147,14 @@ function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
         const pd = r.periods[i];
         if (pd) { h += pd[k].hours; f += pd[k].feesAtStd; }
       }
-      row.push(h, f);
+      row.push([h, totalStyle('right', FMT.hours)]);
+      row.push([f, totalStyle('right', FMT.currency2)]);
       tHrs += h;
       tFee += f;
     }
-    row.push(tHrs, tFee);
-    rows.push(row);
+    row.push([tHrs, totalStyle('right', FMT.hours)]);
+    row.push([tFee, totalStyle('right', FMT.currency2)]);
+    cells.push(row);
   });
 
   // Revenue / Cost adjustments
@@ -955,29 +1165,71 @@ function exportBvaXlsx(data: BvAResponse, kpis: KpiData | null) {
   const budgetedETS = n(eng.etsBudget) + n(eng.digitalToolsBudget);
   const forecastedETS = budgetedETS + n(eng.digitalToolsAdj) + n(eng.etsCostsAdj);
 
-  rows.push([]);
-  rows.push(['Revenue / Cost Adjustments', '', '', 'Budgeted', 'Adjustment', 'Forecasted']);
-  rows.push(['Revenue', '', '', budgetedRevenue, forecastedRevenue - budgetedRevenue, forecastedRevenue]);
-  rows.push(['Expenses', '', '', budgetedExpenses, forecastedExpenses - budgetedExpenses, forecastedExpenses]);
-  rows.push(['ETS', '', '', budgetedETS, forecastedETS - budgetedETS, forecastedETS]);
+  cells.push([['', null]]);
+  cells.push([
+    ['Revenue / Cost Adjustments', kpiHeaderStyle()],
+    ['', kpiHeaderStyle()], ['', kpiHeaderStyle()],
+    ['Budgeted', kpiHeaderStyle()],
+    ['Adjustment', kpiHeaderStyle()],
+    ['Forecasted', kpiHeaderStyle()],
+  ]);
+  const adjRows: Array<[string, number, number, number]> = [
+    ['Revenue', budgetedRevenue, forecastedRevenue - budgetedRevenue, forecastedRevenue],
+    ['Expenses', budgetedExpenses, forecastedExpenses - budgetedExpenses, forecastedExpenses],
+    ['ETS', budgetedETS, forecastedETS - budgetedETS, forecastedETS],
+  ];
+  adjRows.forEach(([label, bv, adj, fv], i) => {
+    const alt = i % 2 === 1;
+    cells.push([
+      [label, kpiLabelStyle(alt)],
+      ['', null], ['', null],
+      [bv, kpiValueStyle(alt, FMT.currency0)],
+      [adj, kpiValueStyle(alt, FMT.currency0)],
+      [fv, kpiValueStyle(alt, FMT.currency0)],
+    ]);
+  });
 
   // KPI summary (Budget | Forecast | Variance)
   const b = kpis?.budget;
   const f = kpis?.forecast;
   const v = kpis?.variance;
-  rows.push([]);
-  rows.push(['KPI Summary', 'Budget', 'Forecast', 'Variance']);
+  const delta = (x: number | null, suffix: string): string => {
+    if (x == null) return '—';
+    if (Math.abs(x) < 0.05) return `0.0${suffix}`;
+    return `${x > 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}${suffix}`;
+  };
+  cells.push([['', null]]);
+  cells.push([
+    ['KPI Summary', kpiHeaderStyle()],
+    ['Budget', kpiHeaderStyle()],
+    ['Forecast', kpiHeaderStyle()],
+    ['Variance', kpiHeaderStyle()],
+  ]);
   if (b && f && v) {
-    rows.push(['Margin %', toPct(b.marginPct) ?? '—', toPct(f.estimatedMarginPct) ?? '—', v.marginPct ?? '—']);
-    rows.push(['Realization %', toPct(b.realization) ?? '—', toPct(f.realization) ?? '—', v.realization ?? '—']);
-    rows.push(['Leverage (Staff/PMD)', b.staffPmdHours ?? '—', f.staffPmdHours ?? '—', v.staffPmdHours ?? '—']);
-    rows.push(['% Below Director', toPct(b.pctBelowDirector) ?? '—', toPct(f.pctBelowDirector) ?? '—', v.pctBelowDirector ?? '—']);
+    const pctRows: Array<[string, number | null, number | null, number | null]> = [
+      ['Margin %', b.marginPct, f.estimatedMarginPct, v.marginPct],
+      ['Realization %', b.realization, f.realization, v.realization],
+      ['% Below Director', b.pctBelowDirector, f.pctBelowDirector, v.pctBelowDirector],
+    ];
+    pctRows.forEach(([label, bv, fv, vv], i) => {
+      const alt = i % 2 === 1;
+      cells.push([
+        [label, kpiLabelStyle(alt)],
+        [bv, kpiValueStyle(alt, FMT.pct)],
+        [fv, kpiValueStyle(alt, FMT.pct)],
+        [delta(vv, '%'), kpiValueStyle(alt, FMT.pct)],
+      ]);
+    });
+    const alt = 3 % 2 === 1;
+    cells.push([
+      ['Leverage (Staff/PMD)', kpiLabelStyle(alt)],
+      [b.staffPmdHours, kpiValueStyle(alt, FMT.leverage)],
+      [f.staffPmdHours, kpiValueStyle(alt, FMT.leverage)],
+      [delta(v.staffPmdHours, 'x'), kpiValueStyle(alt, FMT.leverage)],
+    ]);
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'BvA');
-  XLSX.writeFile(wb, `${sanitizeFilename(eng.name || 'Engagement')}_BvA_${localDateStr()}.xlsx`);
+  await writeXlsx('BvA', cells, colWidths, [{ r: 0, ht: 25.5 }], `${sanitizeFilename(eng.name || 'Engagement')}_BvA_${localDateStr()}.xlsx`);
 }
 
 function BvaView({ engagementId, tasks }: { engagementId: string; tasks: any[] }) {
