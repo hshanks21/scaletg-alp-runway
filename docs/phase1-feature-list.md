@@ -49,6 +49,14 @@ Sources: AlixPartners' deck and Engagement Tracker documents, the intake convers
 | E4 | Modify an approved Budget. Re-approval is required when it crosses the **Re-approval Threshold** (a percentage or a total-hours variance). | New *(limits to confirm)* |
 | E5 | Budget status changes are shown in the app. No email or Teams notifications. | Keep *(proposed)* |
 
+### E+. Scenario Comparison
+| ID | Feature | Disposition |
+|---|---|---|
+| S1 | **Create Scenario** — fork an Engagement Budget into a named variant (e.g. "Option A: Lean Team", "Option B: Full Staff"). Each Scenario is a full independent copy of the Budget's Tasks, Allocations and rates. The original Budget is unaffected. | New |
+| S2 | **Compare Scenarios** — side-by-side view of 2 or more Scenarios showing deltas in total hours, cost at standard, revenue at engagement rate, margin %, Realization, leverage, and timeline. Differences are highlighted. | New |
+| S3 | **Promote Scenario** — select a Scenario as the winner; it replaces the active Budget. Unpromoted Scenarios are kept for the record but marked inactive. | New |
+| S4 | *(Future)* **Natural-language summary** of Scenario differences — a small model generates a plain-English explanation of trade-offs (e.g. "Option B adds 120 senior hours but reduces margin from 34% to 28%"). Not in Phase 1; recorded for Phase 2. | New *(deferred)* |
+
 ### F. Data and integration
 | ID | Feature | Disposition |
 |---|---|---|
