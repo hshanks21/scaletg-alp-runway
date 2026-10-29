@@ -728,6 +728,8 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   const [editingHours, setEditingHours] = useState<{ allocId: string; periodId: string; value: string } | null>(null);
   const [editingRate, setEditingRate] = useState<{ allocId: string; value: string } | null>(null);
   const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'month' | 'none'>('month');
+  const [expandedMonths, setExpandedMonths] = useState<Set<string> | null>(null);
 
   const toggleCollapse = (taskId: string) => {
     setCollapsedTasks(prev => {
@@ -914,6 +916,63 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   let _cum = 0;
   const cumPct = colCost.map((c) => { _cum += c; return fee > 0 ? (_cum / fee) * 100 : 0; });
 
+  // ── Month grouping ──
+  const hoursByPeriod = new Map(periodCols.map((c, i) => [c.periodStart, colHours[i]]));
+  const costByPeriod = new Map(periodCols.map((c, i) => [c.periodStart, colCost[i]]));
+
+  const monthGroups = (() => {
+    const groups: { key: string; label: string; weeks: { periodStart: string; periodEnd: string }[]; isCurrent: boolean; isPast: boolean; hours: number; cost: number }[] = [];
+    const map = new Map<string, number>();
+    periodCols.forEach((c, ci) => {
+      const d = new Date(c.periodEnd.slice(0, 10) + 'T00:00:00');
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!map.has(key)) {
+        map.set(key, groups.length);
+        groups.push({ key, label: d.toLocaleDateString('en-US', { month: 'long' }), weeks: [], isCurrent: false, isPast: true, hours: 0, cost: 0 });
+      }
+      const g = groups[map.get(key)!];
+      g.weeks.push(c);
+      g.hours += colHours[ci];
+      g.cost += colCost[ci];
+      if (isThisWeek(c.periodStart, c.periodEnd)) g.isCurrent = true;
+    });
+    const now = new Date();
+    for (const g of groups) g.isPast = g.weeks.every((w) => now > new Date(w.periodEnd + 'T23:59:59'));
+    return groups;
+  })();
+
+  const currentMonthKey = monthGroups.find((m) => m.isCurrent)?.key;
+  const defaultExpandedKey = currentMonthKey ?? monthGroups[monthGroups.length - 1]?.key;
+  const expanded = expandedMonths ?? new Set(defaultExpandedKey ? [defaultExpandedKey] : []);
+  const toggleMonth = (key: string) => {
+    setExpandedMonths((prev) => {
+      const base = prev ?? new Set(defaultExpandedKey ? [defaultExpandedKey] : []);
+      const next = new Set(base);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const expandAll = () => setExpandedMonths(new Set(monthGroups.map((m) => m.key)));
+  const collapseAll = () => setExpandedMonths(new Set());
+
+  const visibleCols: any[] = viewMode === 'month'
+    ? monthGroups.flatMap((m): any[] => expanded.has(m.key)
+      ? m.weeks.map((w) => ({ type: 'week', periodStart: w.periodStart, periodEnd: w.periodEnd }))
+      : [{ type: 'month', key: m.key, weeks: m.weeks }])
+    : periodCols.map((c) => ({ type: 'week', periodStart: c.periodStart, periodEnd: c.periodEnd }));
+  const middleColSpan = visibleCols.length;
+  const fullColSpan = middleColSpan + 4;
+
+  const colHoursFor = (col: any): number => col.type === 'month'
+    ? col.weeks.reduce((sum: number, w: any) => sum + (hoursByPeriod.get(w.periodStart) || 0), 0)
+    : (hoursByPeriod.get(col.periodStart) || 0);
+  const colCostFor = (col: any): number => col.type === 'month'
+    ? col.weeks.reduce((sum: number, w: any) => sum + (costByPeriod.get(w.periodStart) || 0), 0)
+    : (costByPeriod.get(col.periodStart) || 0);
+  const allocHoursFor = (alloc: any, col: any): number => col.type === 'month'
+    ? col.weeks.reduce((sum: number, w: any) => sum + parseFloat((alloc.periods || []).find((x: any) => x.periodStart === w.periodStart)?.hours || '0'), 0)
+    : parseFloat((alloc.periods || []).find((x: any) => x.periodStart === col.periodStart)?.hours || '0');
+
   return (
     <div>
       <KpiSummaryLine engagementId={engagement.id} mode="budget" refreshToken={refreshToken} />
@@ -934,22 +993,90 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
           </div>
         </div>
 
+        {/* Grouping toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '10px 20px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Group weeks by</span>
+            <div style={{ display: 'flex', gap: '2px', padding: '2px', border: '1px solid var(--line)', borderRadius: '7px', background: 'var(--panel)' }}>
+              {(['month', 'phase', 'none'] as const).map((m) => (
+                <button
+                  key={m}
+                  disabled={m === 'phase'}
+                  onClick={() => { if (m === 'month' || m === 'none') setViewMode(m); }}
+                  title={m === 'phase' ? 'Phases not modeled yet' : undefined}
+                  style={{
+                    fontSize: '11px', padding: '4px 12px', borderRadius: '5px', border: 'none', cursor: m === 'phase' ? 'not-allowed' : 'pointer',
+                    background: viewMode === m ? 'var(--raised)' : 'transparent',
+                    color: m === 'phase' ? 'var(--faint)' : viewMode === m ? 'var(--accent-btn)' : 'var(--muted)',
+                    fontWeight: viewMode === m ? 600 : 400,
+                    opacity: m === 'phase' ? 0.5 : 1,
+                  }}
+                >
+                  {m === 'month' ? 'Month' : m === 'phase' ? 'Phase' : 'None'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <button style={ghostBtn} onClick={expandAll} title="Expand every month">↔ Expand all</button>
+            <button style={ghostBtn} onClick={collapseAll} title="Collapse every month">↔ Collapse all</button>
+            {currentMonthKey ? <button style={ghostBtn} onClick={() => setExpandedMonths(new Set([currentMonthKey]))} title="Jump to the current month">⊙ This month</button> : null}
+          </div>
+        </div>
+
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--line)' }}>
-              <th style={{ textAlign: 'left', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Resource</th>
-              <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Std → Eng rate</th>
-              {periodCols.map((c, i) => (
-                <th key={c.periodStart} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>
-                  <div>{isThisWeek(c.periodStart, c.periodEnd) ? (
-                    <span style={{ background: 'var(--accent-btn)', color: '#fff', fontSize: '10px', padding: '1px 7px', borderRadius: '999px', fontWeight: 600 }}>This week</span>
-                  ) : `Wk ${i + 1}`}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>W/E {fmtWk(c.periodEnd)}</div>
-                </th>
-              ))}
-              <th style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '8px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Hours</th>
-              <th style={{ textAlign: 'right', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cost (eng)</th>
-            </tr>
+            {viewMode === 'month' ? (
+              <>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  <th rowSpan={2} style={{ textAlign: 'left', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Resource</th>
+                  <th rowSpan={2} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Std → Eng rate</th>
+                  {monthGroups.map((m) => (
+                    <th key={m.key} colSpan={expanded.has(m.key) ? m.weeks.length : 1} onClick={() => toggleMonth(m.key)} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', cursor: 'pointer', borderLeft: '1px solid var(--line)' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--accent)' }}>{expanded.has(m.key) ? '⌄' : '›'}</span>
+                        <span>{m.label}</span>
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>{m.weeks.length} wk{m.weeks.length === 1 ? '' : 's'} · {m.hours.toFixed(1)}h{m.isCurrent ? ' · Current' : ''}</div>
+                    </th>
+                  ))}
+                  <th rowSpan={2} style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '8px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Hours</th>
+                  <th rowSpan={2} style={{ textAlign: 'right', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Cost (eng)</th>
+                </tr>
+                <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                  {monthGroups.map((m) => (
+                    expanded.has(m.key)
+                      ? m.weeks.map((w) => (
+                          <th key={w.periodStart} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', borderLeft: '1px solid var(--line)' }}>
+                            <div>{isThisWeek(w.periodStart, w.periodEnd) ? (
+                              <span style={{ background: 'var(--accent-btn)', color: '#fff', fontSize: '10px', padding: '1px 7px', borderRadius: '999px', fontWeight: 600 }}>This week</span>
+                            ) : `Wk ${periodCols.findIndex((pp) => pp.periodStart === w.periodStart) + 1}`}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>W/E {fmtWk(w.periodEnd)}</div>
+                          </th>
+                        ))
+                      : <th key={m.key} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', borderLeft: '1px solid var(--line)' }}>
+                          <div>{m.weeks.length} wks / Total</div>
+                          <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>{m.hours.toFixed(1)}h</div>
+                        </th>
+                  ))}
+                </tr>
+              </>
+            ) : (
+              <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Resource</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Std → Eng rate</th>
+                {periodCols.map((c, i) => (
+                  <th key={c.periodStart} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>
+                    <div>{isThisWeek(c.periodStart, c.periodEnd) ? (
+                      <span style={{ background: 'var(--accent-btn)', color: '#fff', fontSize: '10px', padding: '1px 7px', borderRadius: '999px', fontWeight: 600 }}>This week</span>
+                    ) : `Wk ${i + 1}`}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>W/E {fmtWk(c.periodEnd)}</div>
+                  </th>
+                ))}
+                <th style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '8px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Hours</th>
+                <th style={{ textAlign: 'right', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cost (eng)</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {tasks.map((task, ti) => {
@@ -972,7 +1099,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                         <span style={{ fontSize: '10.5px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '999px', padding: '1px 8px' }}>{formatCurrency(taskCost)}</span>
                       </div>
                     </td>
-                    <td colSpan={periodCols.length + 2} style={{ textAlign: 'right', padding: '8px 20px' }}>
+                    <td colSpan={middleColSpan + 2} style={{ textAlign: 'right', padding: '8px 20px' }}>
                       <div style={{ display: 'inline-flex', gap: '2px' }}>
                         <button style={iconBtn} title="Split hours evenly">⧉</button>
                         <button style={iconBtn} title="More">⋯</button>
@@ -1009,11 +1136,19 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                           <span className="font-data">${std.toLocaleString()}</span> <span style={{ color: 'var(--faint)' }}>→</span> <span className="font-data">${eng.toLocaleString()}</span>
                           <div style={{ display: 'inline-block', fontSize: '10px', fontWeight: 600, color: 'var(--accent-btn)', background: 'var(--raised)', borderRadius: '999px', padding: '1px 7px', marginTop: '3px' }}>{disc.toFixed(1)}%</div>
                         </td>
-                        {periodCols.map((c) => {
-                          const pp = (alloc.periods || []).find((x: any) => x.periodStart === c.periodStart);
+                        {visibleCols.map((col) => {
+                          if (col.type === 'month') {
+                            const mh = allocHoursFor(alloc, col);
+                            return (
+                              <td key={'m-' + col.key} style={{ padding: '6px 4px', textAlign: 'center' }}>
+                                <div className="font-data" style={{ background: mh > 0 ? 'var(--raised)' : 'transparent', color: 'var(--text)', borderRadius: '4px', padding: '4px 0', border: mh > 0 ? 'none' : '1px dashed var(--line)' }}>{mh > 0 ? mh.toFixed(1) : '—'}</div>
+                              </td>
+                            );
+                          }
+                          const pp = (alloc.periods || []).find((x: any) => x.periodStart === col.periodStart);
                           const val = parseFloat(pp?.hours || '0');
                           return (
-                            <td key={c.periodStart} style={{ padding: '6px 4px', textAlign: 'center' }}>
+                            <td key={col.periodStart} style={{ padding: '6px 4px', textAlign: 'center' }}>
                               {editingHours?.periodId === pp?.id ? (
                                 <input autoFocus value={editingHours!.value} onChange={(e) => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: e.target.value })} onBlur={() => saveHours()} onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); else if (e.key === 'Escape') setEditingHours(null); }} style={{ ...budgetInputStyle, width: '48px', textAlign: 'center' }} />
                               ) : (
@@ -1034,7 +1169,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
                   })}
 
                   <tr key={'add-' + task.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td colSpan={periodCols.length + 4} style={{ padding: '6px 20px' }}>
+                    <td colSpan={fullColSpan} style={{ padding: '6px 20px' }}>
                       {addResourceTaskId === task.id ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                           <input autoFocus value={resourceQuery} onChange={(e) => setResourceQuery(e.target.value)} placeholder="Search resources by name…" style={{ ...budgetInputStyle, width: '260px' }} />
@@ -1054,34 +1189,41 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
             })}
 
             {tasks.length === 0 && !addingTask ? (
-              <tr><td colSpan={periodCols.length + 4} style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>No tasks yet. Click "+ Add task" to start building the budget.</td></tr>
+              <tr><td colSpan={fullColSpan} style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>No tasks yet. Click "+ Add task" to start building the budget.</td></tr>
             ) : null}
           </tbody>
 
           {tasks.length > 0 ? (
             <tfoot>
               <tr style={{ borderTop: '1px solid var(--line)', background: 'var(--raised)' }}>
-                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Weekly hours</td>
-                {colHours.map((h, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{h.toFixed(1)}</td>)}
+                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>{viewMode === 'month' ? 'Hours' : 'Weekly hours'}</td>
+                {visibleCols.map((col, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{colHoursFor(col).toFixed(1)}</td>)}
                 <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{totalHours.toFixed(1)}</td>
                 <td style={{ padding: '6px 20px' }} />
               </tr>
               <tr style={{ borderTop: '1px solid var(--line)' }}>
-                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Weekly cost (eng)</td>
-                {colCost.map((c, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text)' }}>{formatCurrency(c)}</td>)}
+                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>{viewMode === 'month' ? 'Cost (eng)' : 'Weekly cost (eng)'}</td>
+                {visibleCols.map((col, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text)' }}>{formatCurrency(colCostFor(col))}</td>)}
                 <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{formatCurrency(totalCost)}</td>
                 <td style={{ padding: '6px 20px' }} />
               </tr>
               <tr style={{ borderTop: '1px solid var(--line)' }}>
                 <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cumulative vs. {formatCurrency(fee)} fee</td>
-                {cumPct.map((pp, i) => (
-                  <td key={i} style={{ textAlign: 'center', padding: '6px 4px' }}>
-                    <div className="font-data" style={{ fontSize: '11px', color: pp > 100 ? 'var(--hi)' : 'var(--text)' }}>{pp > 100 ? '⚠ ' : ''}{Math.round(pp)}%</div>
-                    <div style={{ height: '3px', background: 'var(--raised)', borderRadius: '999px', marginTop: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(pp, 100)}%`, height: '100%', background: pp > 100 ? 'var(--hi)' : 'var(--accent)' }} />
-                    </div>
-                  </td>
-                ))}
+                {(() => {
+                  let _run = 0;
+                  return visibleCols.map((col, i) => {
+                    _run += colCostFor(col);
+                    const pp = fee > 0 ? (_run / fee) * 100 : 0;
+                    return (
+                      <td key={i} style={{ textAlign: 'center', padding: '6px 4px' }}>
+                        <div className="font-data" style={{ fontSize: '11px', color: pp > 100 ? 'var(--hi)' : 'var(--text)' }}>{pp > 100 ? '⚠ ' : ''}{Math.round(pp)}%</div>
+                        <div style={{ height: '3px', background: 'var(--raised)', borderRadius: '999px', marginTop: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(pp, 100)}%`, height: '100%', background: pp > 100 ? 'var(--hi)' : 'var(--accent)' }} />
+                        </div>
+                      </td>
+                    );
+                  });
+                })()}
                 <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: totalCost > fee ? 'var(--hi)' : 'var(--text)' }}>{formatCurrency(totalCost)}</td>
                 <td style={{ padding: '6px 20px' }} />
               </tr>
@@ -1115,7 +1257,7 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ color: 'var(--hi)' }}>!</span> Over-allocated</span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '50%', border: '1px dashed var(--accent)' }} /> Open role</span>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--faint)' }}>Arrow keys to move · Enter to edit · Drag the corner to fill</div>
+          <div style={{ fontSize: '11px', color: 'var(--faint)' }}>{viewMode === 'month' ? 'Past months collapse by default · the current month opens · future months show totals' : 'Arrow keys to move · Enter to edit · Drag the corner to fill'}</div>
         </div>
       </div>
     </div>
