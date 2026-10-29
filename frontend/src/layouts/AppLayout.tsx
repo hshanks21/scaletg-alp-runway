@@ -53,7 +53,7 @@ export function AppLayout() {
         position: 'relative',
         padding: '20px',
         height: '100vh',
-        background: '#1d2e28',
+        background: 'radial-gradient(900px 500px at 100% 0%, rgba(29,136,55,.07), transparent 65%)',
       }}
     >
       {/* .app — bordered, rounded shell */}
