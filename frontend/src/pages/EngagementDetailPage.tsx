@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
+import { LayoutGrid, BarChart3, Flag, Info } from 'lucide-react';
 
 interface EngagementDetail {
   id: string;
@@ -12,15 +13,16 @@ interface EngagementDetail {
   startDate: string;
   endDate: string;
   periodType: string;
+  updatedAt: string;
   tasks: any[];
 }
 
-const STATUS_META: Record<string, { label: string; dot: string }> = {
-  draft: { label: 'Draft', dot: '#7C8780' },
-  submitted: { label: 'Submitted', dot: '#D9A441' },
-  approved: { label: 'Approved', dot: '#3FA85E' },
-  rejected: { label: 'Rejected', dot: '#E0805C' },
-  modified: { label: 'Modified', dot: '#B76BA3' },
+const STATUS_META: Record<string, { label: string; dot: string; text: string }> = {
+  draft: { label: 'Draft', dot: '#7C8780', text: '#4A544D' },
+  submitted: { label: 'Submitted', dot: '#D9A441', text: '#8A6A1C' },
+  approved: { label: 'Approved', dot: '#3FA85E', text: '#187430' },
+  rejected: { label: 'Rejected', dot: '#E0805C', text: '#B4512C' },
+  modified: { label: 'Modified', dot: '#B76BA3', text: '#8E4A80' },
 };
 
 type ViewTab = 'budget' | 'bva' | 'checkpoints';
@@ -34,6 +36,94 @@ function formatCurrency(n: string | number): string {
 
 
 
+function fmtShortDate(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function relTime(iso: string): string {
+  if (!iso) return 'just now';
+  const diff = Date.now() - new Date(iso).getTime();
+  if (isNaN(diff)) return 'just now';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function capitalize(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function computeProgress(startDate: string, endDate: string, periodType: string): { current: number; total: number; unit: string } {
+  const unit = periodType === 'monthly' ? 'Month' : 'Week';
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  let total = 1;
+  if (periodType === 'monthly') {
+    total = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1);
+  } else {
+    const diffDays = (end.getTime() - start.getTime()) / 86400000;
+    total = Math.max(1, Math.ceil((diffDays + 1) / 7));
+  }
+  const now = new Date();
+  let current = 1;
+  if (now >= start) {
+    if (now >= end) {
+      current = total;
+    } else if (periodType === 'monthly') {
+      current = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()) + 1;
+    } else {
+      current = Math.floor((now.getTime() - start.getTime()) / (7 * 86400000)) + 1;
+    }
+  }
+  current = Math.max(1, Math.min(total, current));
+  return { current, total, unit };
+}
+
+function MetaItem({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <div style={{ fontSize: '11px', color: 'var(--faint)' }}>{label}</div>
+      <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600, marginTop: '3px', whiteSpace: 'nowrap' }}>{value}</div>
+    </div>
+  );
+}
+
+const MARGIN_TARGET_PCT = 25;
+
+const HERO: CSSProperties = { fontFamily: "'Space Grotesk', 'Inter', sans-serif", fontSize: '34px', fontWeight: 600, lineHeight: 1.1, color: 'var(--text)' };
+
+function KpiCardShell({ title, info, alert, children, style }: { title: string; info?: string; alert?: boolean; children: ReactNode; style?: CSSProperties }) {
+  return (
+    <div
+      style={{
+        background: alert ? 'rgba(180, 81, 44, 0.04)' : 'var(--panel)',
+        borderRadius: '10px',
+        padding: '14px 16px',
+        border: alert ? '1px solid var(--hi)' : '1px solid var(--line)',
+        display: 'flex', flexDirection: 'column', gap: '10px',
+        ...style,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>{title}</span>
+        {info && (
+          <span style={{ color: 'var(--faint)', display: 'inline-flex' }} title={info}>
+            <Info size={13} />
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ── KPI summary line (RUN-1) — one line, no big-number tiles ──
 
 interface KpiData {
@@ -41,9 +131,15 @@ interface KpiData {
     estTotalRevenue: number;
     estimatedMargin: number;
     estimatedMarginPct: number;
+    budgetedRevenue: number;
+    feesAtStandard: number;
+    feesAtEngagement: number;
     realization: number;
     staffPmdHours: number;
     pctBelowDirector: number;
+    pmdHours: number;
+    staffHours: number;
+    belowDirectorHours: number;
   };
   budget: {
     marginPct: number | null;
@@ -102,18 +198,138 @@ function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId
   const pct = (x: number | null) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
 
   if (mode === 'budget') {
+    const fee = f.budgetedRevenue || 0;
+    const stdValue = f.feesAtStandard || 0;
+    const labor = f.feesAtEngagement || 0;
+    const revenue = f.estTotalRevenue || 0;
     const mPct = f.estimatedMarginPct * 100;
+    const cost = revenue - f.estimatedMargin;
+    const overrun = labor - fee;
+    const overrunPct = fee > 0 ? Math.round((labor / fee) * 100) : 0;
+    const belowTarget = mPct < MARGIN_TARGET_PCT;
+    const pmdH = f.pmdHours || 0;
+    const staffH = f.staffHours || 0;
+    const consultantH = f.belowDirectorHours || 0;
+    const directorH = Math.max(0, staffH - consultantH);
+    const mixSum = Math.max(pmdH + staffH, 1);
+    const staffBlocks = Math.max(1, Math.min(15, Math.round(f.staffPmdHours)));
+    const maxBuild = Math.max(fee, labor, stdValue, revenue, 1);
+    const gaugeMax = 40;
+
     return (
-      <div style={KPI_LINE_STYLE}>
-        <span style={{ fontWeight: 600, color: marginColor(mPct) }}>
-          Revenue {formatCurrency(f.estTotalRevenue)} · Margin {formatCurrency(f.estimatedMargin)} ({mPct.toFixed(1)}%)
-        </span>
-        {' · '}
-        <span>Realization {(f.realization * 100).toFixed(1)}%</span>
-        {' · '}
-        <span>Staff/PMD {f.staffPmdHours.toFixed(1)}</span>
-        {' · '}
-        <span>Below Dir {(f.pctBelowDirector * 100).toFixed(1)}%</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+        {/* 1. Margin — tall left */}
+        <KpiCardShell title="Margin" info="Estimated margin as a percentage of total revenue." alert={belowTarget} style={{ gridRow: 'span 2' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={HERO}>{mPct.toFixed(1)}%</span>
+            {belowTarget && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(180, 81, 44, 0.12)', color: 'var(--hi)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px' }}>↓ Below target</span>
+            )}
+          </div>
+          <div>
+            <div style={{ position: 'relative', height: '10px', background: 'var(--raised)', borderRadius: '999px', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(MARGIN_TARGET_PCT / gaugeMax) * 100}%`, background: 'rgba(180, 81, 44, 0.12)' }} />
+              <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.min(mPct / gaugeMax, 1) * 100}%`, background: 'var(--hi)', borderRadius: '999px' }} />
+              <div style={{ position: 'absolute', left: `${(MARGIN_TARGET_PCT / gaugeMax) * 100}%`, top: '-2px', bottom: '-2px', width: '2px', background: 'var(--text)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--faint)', marginTop: '4px' }}>
+              {[0, 10, 20, 30, 40].map(t => <span key={t}>{t}%</span>)}
+            </div>
+            <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>Target [{MARGIN_TARGET_PCT}%]</div>
+          </div>
+          <div style={{ marginTop: 'auto', borderTop: '1px solid var(--line)', paddingTop: '10px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--faint)', marginBottom: '8px' }}>Calculation</div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div className="font-data" style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text)' }}>{formatCurrency(revenue)}</div>
+                <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>Revenue</div>
+              </div>
+              <span style={{ color: 'var(--faint)', alignSelf: 'center' }}>−</span>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div className="font-data" style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text)' }}>{formatCurrency(cost)}</div>
+                <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>Cost</div>
+              </div>
+              <span style={{ color: 'var(--faint)', alignSelf: 'center' }}>=</span>
+              <div style={{ textAlign: 'center', flex: 1 }}>
+                <div className="font-data" style={{ fontSize: '15px', fontWeight: 600, color: belowTarget ? 'var(--hi)' : 'var(--accent)' }}>{formatCurrency(f.estimatedMargin)}</div>
+                <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>Margin</div>
+              </div>
+            </div>
+          </div>
+        </KpiCardShell>
+
+        {/* 2. Revenue build */}
+        <KpiCardShell title="Revenue build" info="How estimated revenue stacks against fee, labor, and standard value.">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+            {[
+              { label: 'Fixed fee', v: fee, color: 'var(--text)' },
+              { label: 'Labor (eng)', v: labor, color: overrun > 0 ? 'var(--hi)' : 'var(--accent)' },
+              { label: 'Std value', v: stdValue, color: 'var(--accent-soft)' },
+              { label: 'Revenue', v: revenue, color: 'var(--accent-btn)' },
+            ].map(r => (
+              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: '74px', fontSize: '10px', color: 'var(--muted)', flexShrink: 0 }}>{r.label}</span>
+                <div style={{ flex: 1, height: '12px', background: 'var(--raised)', borderRadius: '3px', position: 'relative' }}>
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(r.v / maxBuild) * 100}%`, background: r.color, borderRadius: '3px' }} />
+                  <div style={{ position: 'absolute', left: `${(fee / maxBuild) * 100}%`, top: '-2px', bottom: '-2px', width: '1px', borderLeft: '1px dashed var(--faint)' }} />
+                </div>
+                <span className="font-data" style={{ fontSize: '11px', fontWeight: 600, color: r.v > fee ? 'var(--hi)' : 'var(--text)', flexShrink: 0 }}>{formatCurrency(r.v)}</span>
+              </div>
+            ))}
+          </div>
+          {overrun > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(180, 81, 44, 0.12)', color: 'var(--hi)', fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '999px' }}>⚠ Labor +{formatCurrency(overrun)} over fee ({overrunPct}%)</span>
+          )}
+        </KpiCardShell>
+
+        {/* 3. Realization */}
+        <KpiCardShell title="Realization" info="Fees at engagement rates ÷ fees at standard rates.">
+          <div style={HERO}>{(f.realization * 100).toFixed(1)}%</div>
+          <div style={{ position: 'relative', height: '8px', background: 'var(--raised)', borderRadius: '999px', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.min(f.realization * 100, 100)}%`, background: 'var(--accent-btn)', borderRadius: '999px' }} />
+            <div style={{ position: 'absolute', left: `${Math.min(f.realization * 100, 100)}%`, top: '-2px', bottom: '-2px', width: '2px', background: 'var(--text)' }} />
+          </div>
+          <div style={{ position: 'relative', height: '14px', fontSize: '10px', color: 'var(--faint)' }}>
+            <span style={{ position: 'absolute', left: '80%', transform: 'translateX(-50%)' }}>80%</span>
+            <span style={{ position: 'absolute', left: '90%', transform: 'translateX(-50%)' }}>90%</span>
+            <span style={{ position: 'absolute', left: '100%', transform: 'translateX(-50%)' }}>100%</span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--faint)' }}>Engagement rates ÷ standard rates</div>
+        </KpiCardShell>
+
+        {/* 4. Leverage · Staff / PMD */}
+        <KpiCardShell title="Leverage · Staff / PMD" info="Staff hours (Director + Consultant) per PMD hour.">
+          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text)' }}>
+            <span className="font-data">{f.staffPmdHours.toFixed(1)}</span>
+            <span style={{ color: 'var(--faint)', fontSize: '16px', margin: '0 6px' }}>:</span>
+            <span className="font-data" style={{ color: 'var(--faint)' }}>1</span>
+          </div>
+          <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
+            <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'var(--text)' }} title="PMD" />
+            {Array.from({ length: staffBlocks }).map((_, i) => (
+              <span key={i} style={{ width: '12px', height: '12px', borderRadius: '3px', background: 'var(--accent-soft)' }} />
+            ))}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--faint)' }}>PMD {pmdH.toFixed(1)}h · Staff {staffH.toFixed(1)}h</div>
+        </KpiCardShell>
+
+        {/* 5. Staffing mix */}
+        <KpiCardShell title="Staffing mix" info="Share of total hours by level.">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+            <span style={HERO}>{(f.pctBelowDirector * 100).toFixed(1)}%</span>
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>below Director</span>
+          </div>
+          <div style={{ display: 'flex', height: '12px', borderRadius: '3px', overflow: 'hidden' }}>
+            <div style={{ width: `${(consultantH / mixSum) * 100}%`, background: 'var(--accent-btn)' }} />
+            <div style={{ width: `${(directorH / mixSum) * 100}%`, background: 'var(--accent)' }} />
+            <div style={{ width: `${(pmdH / mixSum) * 100}%`, background: 'var(--accent-soft)' }} />
+          </div>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '10px', color: 'var(--faint)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--accent-btn)' }} /> Consultant {consultantH.toFixed(2)}h</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--accent)' }} /> Director {directorH.toFixed(1)}h</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--accent-soft)' }} /> PMD {pmdH.toFixed(1)}h</span>
+          </div>
+        </KpiCardShell>
       </div>
     );
   }
@@ -149,6 +365,17 @@ export function EngagementDetailPage() {
   const [activeTab, setActiveTab] = useState<ViewTab>(
     location.pathname.includes('budget-vs-actual') ? 'bva' : 'budget'
   );
+  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+  );
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -228,44 +455,54 @@ export function EngagementDetailPage() {
   }
 
   const fee = parseFloat(engagement.agreedBaseFees || '0') + parseFloat(engagement.contingentFees || '0');
-  const meta = STATUS_META[engagement.status] || { label: engagement.status, dot: '#7C8780' };
+  const meta = STATUS_META[engagement.status] || { label: engagement.status, dot: '#7C8780', text: '#4A544D' };
+  const prog = computeProgress(engagement.startDate, engagement.endDate, engagement.periodType);
+  const progPct = prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
 
-  const tabs: { key: ViewTab; label: string }[] = [
-    { key: 'budget', label: 'Budget' },
-    { key: 'bva', label: 'Budget vs. Actual' },
-    { key: 'checkpoints', label: 'Checkpoints' },
+  const tabs: { key: ViewTab; label: string; icon: typeof LayoutGrid }[] = [
+    { key: 'budget', label: 'Budget', icon: LayoutGrid },
+    { key: 'bva', label: 'Budget vs. Actual', icon: BarChart3 },
+    { key: 'checkpoints', label: 'Checkpoints', icon: Flag },
   ];
 
   return (
     <div>
       {/* Project header */}
       <div
-        className="flex items-center justify-between mb-4"
         style={{
           background: 'var(--panel)',
-          borderRadius: '10px',
-          padding: '14px 20px',
+          borderRadius: '12px',
+          padding: '18px 24px',
           border: '1px solid var(--line)',
+          marginBottom: '16px',
         }}
       >
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.01em' }}>{engagement.name}</h1>
-            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
-            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>{engagement.clientName}</span>
+        {/* Breadcrumb + status */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+            <span style={{ color: 'var(--faint)' }}>Engagements</span>
+            <span style={{ color: 'var(--faint)' }}> / </span>
+            <span>{engagement.clientName}</span>
           </div>
-          <div className="flex items-center gap-3 mt-1">
-            <span className="flex items-center gap-1.5" style={{ fontSize: '12px', color: 'var(--text)' }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
-              {meta.label}
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
-            <span style={{ fontSize: '12px', color: 'var(--faint)' }}><span className="font-data">{formatCurrency(fee)}</span> Fixed Fee</span>
-            <span style={{ fontSize: '12px', color: 'var(--faint)' }}>·</span>
-            <span style={{ fontSize: '12px', color: 'var(--faint)', textTransform: 'capitalize' }}>{engagement.periodType}</span>
-          </div>
+          <span
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              background: `${meta.dot}1f`,
+              color: theme === 'dark' ? meta.dot : meta.text,
+              fontSize: '12px', fontWeight: 600,
+              padding: '3px 10px', borderRadius: '999px', lineHeight: 1,
+            }}
+          >
+            <span>{engagement.status === 'approved' ? '✓' : '●'}</span>
+            {meta.label}
+          </span>
         </div>
 
+        {/* Title + status + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.01em', margin: 0 }}>{engagement.name}</h1>
+          </div>
         {/* Action buttons */}
         <div className="flex items-center gap-2">
           {(engagement.status === 'draft' || engagement.status === 'rejected') && (
@@ -327,38 +564,57 @@ export function EngagementDetailPage() {
             </>
           )}
         </div>
+
+        </div>
+
+        {/* Metadata row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start', borderTop: '1px solid var(--line)', paddingTop: '14px' }}>
+          <MetaItem label="Fee" value={`${formatCurrency(fee)} fixed`} />
+          <MetaItem label="Cadence" value={capitalize(engagement.periodType)} />
+          <MetaItem label="Dates" value={`${fmtShortDate(engagement.startDate)} – ${fmtShortDate(engagement.endDate)}`} />
+          <MetaItem
+            label="Progress"
+            value={(
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ width: '56px', height: '6px', background: 'var(--line)', borderRadius: '999px', overflow: 'hidden', display: 'inline-block' }}>
+                  <span style={{ display: 'block', width: `${progPct}%`, height: '100%', background: 'var(--accent)', borderRadius: '999px' }} />
+                </span>
+                {prog.unit} {prog.current} of {prog.total}
+              </span>
+            )}
+          />
+          <MetaItem label="Owner" value={engagement.engagementOwner} />
+          <MetaItem label="Last updated" value={`[${relTime(engagement.updatedAt)} by ${engagement.engagementOwner.split(' ')[0]}]`} />
+        </div>
       </div>
 
       {/* View tabs */}
-      <div
-        className="flex items-center gap-0.5 mb-5"
-        style={{
-          background: 'var(--panel)',
-          borderRadius: '6px',
-          padding: '3px',
-          border: '1px solid var(--line)',
-          display: 'inline-flex',
-        }}
-      >
-        {tabs.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              fontSize: '12px',
-              padding: '6px 22px',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              background: activeTab === tab.key ? '#1A1E1C' : 'transparent',
-              color: activeTab === tab.key ? '#E8ECE9' : '#9AA59D',
-              borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
-              transition: 'all 0.15s',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: '2px', borderBottom: '1px solid var(--line)', marginBottom: '16px' }}>
+        {tabs.map(tab => {
+          const active = activeTab === tab.key;
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '7px',
+                padding: '9px 18px',
+                fontSize: '12.5px',
+                fontWeight: active ? 700 : 500,
+                color: active ? 'var(--accent-btn)' : 'var(--muted)',
+                background: active ? 'var(--panel)' : 'transparent',
+                border: 'none',
+                borderTop: active ? '3px solid var(--accent)' : '3px solid transparent',
+                borderRadius: '8px 8px 0 0',
+                cursor: 'pointer',
+              }}
+            >
+              <Icon size={14} strokeWidth={active ? 2.5 : 2} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab content */}
@@ -471,6 +727,15 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   const [resourceResults, setResourceResults] = useState<any[]>([]);
   const [editingHours, setEditingHours] = useState<{ allocId: string; periodId: string; value: string } | null>(null);
   const [editingRate, setEditingRate] = useState<{ allocId: string; value: string } | null>(null);
+  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
+
+  const toggleCollapse = (taskId: string) => {
+    setCollapsedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
+      return next;
+    });
+  };
 
   const bumpKpi = () => setRefreshToken((t) => t + 1);
 
@@ -581,127 +846,250 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
     color: 'var(--faint)', fontSize: '11px', padding: '2px 5px',
   };
 
+  const ghostBtn: CSSProperties = {
+    background: 'transparent', border: '1px solid var(--line-strong)', color: 'var(--muted)',
+    fontSize: '12px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: '6px',
+  };
+  const accentBtn: CSSProperties = {
+    background: 'var(--accent-btn)', color: '#fff', border: 'none',
+    fontSize: '12px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: '6px',
+  };
+
+  const initials = (name: string) => {
+    const parts = name.trim().split(/\s+/);
+    if (!parts[0]) return '?';
+    const first = parts[0][0];
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase();
+  };
+
+  const fmtWk = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const cellBg = (h: number) => {
+    if (h >= 15) return 'var(--accent-btn)';
+    if (h >= 5) return 'var(--accent-soft)';
+    if (h > 0) return 'var(--raised)';
+    return 'transparent';
+  };
+  const cellFg = (h: number) => (h >= 15 ? '#fff' : 'var(--text)');
+
+  const periodCols: { periodStart: string; periodEnd: string }[] = (() => {
+    const map = new Map<string, { periodStart: string; periodEnd: string }>();
+    for (const t of tasks) for (const a of t.allocations || []) for (const p of a.periods || []) {
+      if (!map.has(p.periodStart)) map.set(p.periodStart, { periodStart: p.periodStart, periodEnd: p.periodEnd });
+    }
+    return [...map.values()].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+  })();
+
+  const isThisWeek = (start: string, end: string) => {
+    const now = new Date();
+    return now >= new Date(start + 'T00:00:00') && now <= new Date(end + 'T23:59:59');
+  };
+
+  const totalResources = tasks.reduce((n, t) => n + (t.allocations?.length || 0), 0);
+  const fee = parseFloat(engagement.agreedBaseFees || '0') + parseFloat(engagement.contingentFees || '0');
+
+  const colHours = periodCols.map((c) => {
+    let h = 0;
+    for (const t of tasks) for (const a of t.allocations || []) for (const pp of a.periods || []) {
+      if (pp.periodStart === c.periodStart) h += parseFloat(pp.hours || '0');
+    }
+    return h;
+  });
+  const colCost = periodCols.map((c) => {
+    let cost = 0;
+    for (const t of tasks) for (const a of t.allocations || []) for (const pp of a.periods || []) {
+      if (pp.periodStart === c.periodStart) cost += parseFloat(pp.hours || '0') * parseFloat(a.engagementRate || '0');
+    }
+    return cost;
+  });
+  const totalHours = colHours.reduce((sum, h) => sum + h, 0);
+  const totalCost = colCost.reduce((sum, c) => sum + c, 0);
+  let _cum = 0;
+  const cumPct = colCost.map((c) => { _cum += c; return fee > 0 ? (_cum / fee) * 100 : 0; });
+
   return (
     <div>
       <KpiSummaryLine engagementId={engagement.id} mode="budget" refreshToken={refreshToken} />
 
-      <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden' }}>
-        {tasks.length === 0 && !addingTask ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>
-            No tasks yet. Click "+ Add Task" to start building the budget.
+      <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden', marginBottom: '14px' }}>
+        {/* Title bar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '14px 20px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>Staffing plan</span>
+            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{periodCols.length} weeks · {totalResources} resources · {tasks.length} task{tasks.length === 1 ? '' : 's'}</span>
           </div>
-        ) : (
-          tasks.map((task, ti) => {
-            const hasAllocs = (task.allocations?.length || 0) > 0;
-            return (
-              <div key={task.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                <div style={{ padding: '8px 20px', background: 'var(--raised)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <span style={{ fontSize: '12px', color: 'var(--accent)' }}>▼</span>
-                    {editingTaskId === task.id ? (
-                      <input
-                        autoFocus
-                        value={editingTaskName}
-                        onChange={(e) => setEditingTaskName(e.target.value)}
-                        onBlur={() => saveTaskName(task.id)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') saveTaskName(task.id); else if (e.key === 'Escape') setEditingTaskId(null); }}
-                        style={budgetInputStyle}
-                      />
-                    ) : (
-                      <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', cursor: 'pointer' }} onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); }}>
-                        {task.name}
-                      </span>
-                    )}
-                    <span style={{ fontSize: '11px', color: hasAllocs ? 'var(--faint)' : 'var(--muted)', fontStyle: hasAllocs ? 'italic' : 'normal' }}>
-                      (est: {task.estimatedHours || 0}h → alloc: {task.allocatedHours?.toFixed(0) || 0}h)
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
-                    <button style={iconBtn} onClick={() => moveTask(task.id, -1)} disabled={ti === 0} title="Move up">↑</button>
-                    <button style={iconBtn} onClick={() => moveTask(task.id, 1)} disabled={ti === tasks.length - 1} title="Move down">↓</button>
-                    <button style={iconBtn} onClick={() => deleteTask(task.id)} title="Delete task">✕</button>
-                  </div>
-                </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button style={ghostBtn} title="Spread a total across selected cells">⇄ Spread hours</button>
+            <button style={ghostBtn} title="Fill selected cells to the right">→ Fill right</button>
+            <button style={ghostBtn} title="Paste hours from a spreadsheet">⎘ Paste from Excel</button>
+            <button style={ghostBtn} title="Toggle rate columns">$ Rates</button>
+            <button style={accentBtn} onClick={() => setAddingTask(true)}>+ Add task</button>
+          </div>
+        </div>
 
-                {task.allocations?.map((alloc: any) => (
-                  <div key={alloc.id} style={{ padding: '8px 20px 8px 40px', borderBottom: '1px solid var(--line)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '220px', color: 'var(--text)', flexShrink: 0 }}>
-                      {alloc.resourceName || 'Unknown'}
-                      <div style={{ fontSize: '11px', color: 'var(--faint)' }}>
-                        {alloc.categoryName} · ${parseFloat(alloc.standardRate || 0).toLocaleString()} std /{' '}
-                        {editingRate?.allocId === alloc.id ? (
-                          <input
-                            autoFocus
-                            value={editingRate!.value}
-                            onChange={(e) => setEditingRate({ allocId: alloc.id, value: e.target.value })}
-                            onBlur={() => saveRate(alloc.id)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') saveRate(alloc.id); else if (e.key === 'Escape') setEditingRate(null); }}
-                            style={{ ...budgetInputStyle, width: '64px' }}
-                          />
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+              <th style={{ textAlign: 'left', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Resource</th>
+              <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Std → Eng rate</th>
+              {periodCols.map((c, i) => (
+                <th key={c.periodStart} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>
+                  <div>{isThisWeek(c.periodStart, c.periodEnd) ? (
+                    <span style={{ background: 'var(--accent-btn)', color: '#fff', fontSize: '10px', padding: '1px 7px', borderRadius: '999px', fontWeight: 600 }}>This week</span>
+                  ) : `Wk ${i + 1}`}</div>
+                  <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>W/E {fmtWk(c.periodEnd)}</div>
+                </th>
+              ))}
+              <th style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '8px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Hours</th>
+              <th style={{ textAlign: 'right', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cost (eng)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tasks.map((task, ti) => {
+              const allocs = task.allocations || [];
+              const taskHours = allocs.reduce((sum: number, a: any) => sum + (a.periods || []).reduce((x: number, pp: any) => x + parseFloat(pp.hours || '0'), 0), 0);
+              const taskCost = allocs.reduce((sum: number, a: any) => sum + (a.periods || []).reduce((x: number, pp: any) => x + parseFloat(pp.hours || '0') * parseFloat(a.engagementRate || '0'), 0), 0);
+              const estDiff = taskHours - parseFloat(task.estimatedHours || '0');
+              return (
+                <>
+                  <tr key={'task-' + task.id} style={{ background: 'var(--raised)', borderBottom: '1px solid var(--line)' }}>
+                    <td colSpan={2} style={{ padding: '8px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '10px', color: 'var(--accent)', cursor: 'pointer' }} onClick={() => toggleCollapse(task.id)}>{collapsedTasks.has(task.id) ? '▶' : '▼'}</span>
+                        {editingTaskId === task.id ? (
+                          <input autoFocus value={editingTaskName} onChange={(e) => setEditingTaskName(e.target.value)} onBlur={() => saveTaskName(task.id)} onKeyDown={(e) => { if (e.key === 'Enter') saveTaskName(task.id); else if (e.key === 'Escape') setEditingTaskId(null); }} style={budgetInputStyle} />
                         ) : (
-                          <span style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={() => setEditingRate({ allocId: alloc.id, value: alloc.engagementRate })}>
-                            ${parseFloat(alloc.engagementRate || 0).toLocaleString()}
-                          </span>
-                        )}{' '}
-                        eng
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer' }} onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); }}>{task.name}</span>
+                        )}
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '999px', padding: '1px 8px' }}>{Math.round(taskHours)}h alloc · {task.estimatedHours || 0}h est · {estDiff >= 0 ? '+' : ''}{estDiff.toFixed(1)}h</span>
+                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '999px', padding: '1px 8px' }}>{formatCurrency(taskCost)}</span>
                       </div>
-                    </div>
+                    </td>
+                    <td colSpan={periodCols.length + 2} style={{ textAlign: 'right', padding: '8px 20px' }}>
+                      <div style={{ display: 'inline-flex', gap: '2px' }}>
+                        <button style={iconBtn} title="Split hours evenly">⧉</button>
+                        <button style={iconBtn} title="More">⋯</button>
+                        <button style={iconBtn} onClick={() => moveTask(task.id, -1)} disabled={ti === 0} title="Move up">↑</button>
+                        <button style={iconBtn} onClick={() => moveTask(task.id, 1)} disabled={ti === tasks.length - 1} title="Move down">↓</button>
+                        <button style={iconBtn} onClick={() => deleteTask(task.id)} title="Delete task">✕</button>
+                      </div>
+                    </td>
+                  </tr>
 
-                    <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
-                      {alloc.periods?.map((p: any) => {
-                        const val = parseFloat(p.hours || '0');
-                        return (
-                          <div key={p.id} className="font-data" style={{ flex: 1, textAlign: 'center', padding: '4px', background: val > 0 ? 'var(--accent-soft)' : 'transparent', borderRadius: '4px', color: val > 0 ? 'var(--text)' : 'var(--faint)' }}>
-                            {editingHours?.periodId === p.id ? (
-                              <input
-                                autoFocus
-                                value={editingHours!.value}
-                                onChange={(e) => setEditingHours({ allocId: alloc.id, periodId: p.id, value: e.target.value })}
-                                onBlur={() => saveHours()}
-                                onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); else if (e.key === 'Escape') setEditingHours(null); }}
-                                style={{ ...budgetInputStyle, width: '100%', textAlign: 'center', padding: '2px 4px' }}
-                              />
-                            ) : (
-                              <span style={{ cursor: 'pointer' }} onClick={() => setEditingHours({ allocId: alloc.id, periodId: p.id, value: p.hours })}>
-                                {val || '—'}
-                              </span>
-                            )}
+                  {!collapsedTasks.has(task.id) ? (
+                    <>
+                  {allocs.map((alloc: any) => {
+                    const std = parseFloat(alloc.standardRate || '0');
+                    const eng = parseFloat(alloc.engagementRate || '0');
+                    const disc = std > 0 ? ((eng - std) / std) * 100 : 0;
+                    const rowHours = (alloc.periods || []).reduce((sum: number, pp: any) => sum + parseFloat(pp.hours || '0'), 0);
+                    const rowCost = (alloc.periods || []).reduce((sum: number, pp: any) => sum + parseFloat(pp.hours || '0') * eng, 0);
+                    return (
+                      <tr key={alloc.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                        <td style={{ padding: '10px 20px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: alloc.isPlaceholder ? 'transparent' : 'var(--accent-btn)', border: alloc.isPlaceholder ? '1px dashed var(--faint)' : 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: alloc.isPlaceholder ? 'var(--faint)' : '#fff', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>{alloc.isPlaceholder ? '?' : initials(alloc.resourceName || '')}</span>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', fontStyle: alloc.isPlaceholder ? 'italic' : 'normal' }}>{alloc.resourceName || 'Unknown'}</div>
+                              <div style={{ display: 'flex', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                {alloc.categoryName ? <span style={{ fontSize: '10px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '4px', padding: '0 5px' }}>{alloc.categoryName}</span> : null}
+                                {alloc.isPlaceholder ? <span style={{ fontSize: '10px', color: 'var(--accent)', border: '1px dashed var(--accent)', borderRadius: '4px', padding: '0 5px' }}>Open role</span> : rowHours === 0 ? <span style={{ fontSize: '10px', color: 'var(--hi)', background: 'rgba(180, 81, 44, 0.1)', borderRadius: '4px', padding: '0 5px' }}>Not allocated</span> : null}
+                              </div>
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: '11.5px', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                          <span className="font-data">${std.toLocaleString()}</span> <span style={{ color: 'var(--faint)' }}>→</span> <span className="font-data">${eng.toLocaleString()}</span>
+                          <div style={{ display: 'inline-block', fontSize: '10px', fontWeight: 600, color: 'var(--accent-btn)', background: 'var(--raised)', borderRadius: '999px', padding: '1px 7px', marginTop: '3px' }}>{disc.toFixed(1)}%</div>
+                        </td>
+                        {periodCols.map((c) => {
+                          const pp = (alloc.periods || []).find((x: any) => x.periodStart === c.periodStart);
+                          const val = parseFloat(pp?.hours || '0');
+                          return (
+                            <td key={c.periodStart} style={{ padding: '6px 4px', textAlign: 'center' }}>
+                              {editingHours?.periodId === pp?.id ? (
+                                <input autoFocus value={editingHours!.value} onChange={(e) => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: e.target.value })} onBlur={() => saveHours()} onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); else if (e.key === 'Escape') setEditingHours(null); }} style={{ ...budgetInputStyle, width: '48px', textAlign: 'center' }} />
+                              ) : (
+                                <div className="font-data" onClick={pp ? () => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: pp.hours }) : undefined} style={{ cursor: pp ? 'pointer' : 'default', background: cellBg(val), color: cellFg(val), borderRadius: '4px', padding: '4px 0', border: val > 0 ? 'none' : '1px dashed var(--line)' }}>{val > 0 ? val.toFixed(1) : '—'}</div>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="font-data" style={{ borderLeft: '1px solid var(--line)', padding: '10px 14px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{rowHours.toFixed(1)}</td>
+                        <td className="font-data" style={{ padding: '10px 20px', textAlign: 'right', fontSize: '12px', color: 'var(--text)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                            {formatCurrency(rowCost)}
+                            <button style={iconBtn} onClick={() => removeResource(alloc.id)} title="Remove resource">✕</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-                    <button style={iconBtn} onClick={() => removeResource(alloc.id)} title="Remove resource">✕</button>
-                  </div>
+                  <tr key={'add-' + task.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                    <td colSpan={periodCols.length + 4} style={{ padding: '6px 20px' }}>
+                      {addResourceTaskId === task.id ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                          <input autoFocus value={resourceQuery} onChange={(e) => setResourceQuery(e.target.value)} placeholder="Search resources by name…" style={{ ...budgetInputStyle, width: '260px' }} />
+                          {resourceResults.slice(0, 8).map((r: any) => (
+                            <button key={r.id} onClick={() => addResource(task.id, r)} style={{ textAlign: 'left', fontSize: '11px', color: 'var(--text)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: '4px', padding: '5px 10px', cursor: 'pointer' }}>{r.name} <span style={{ color: 'var(--faint)' }}>· {r.categoryName} · ${parseFloat(r.standardRate).toLocaleString()}</span></button>
+                          ))}
+                        </div>
+                      ) : (
+                        <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: '1px dashed var(--accent)', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }} onClick={() => setAddResourceTaskId(task.id)}>+ Add resource to {task.name}</button>
+                      )}
+                    </td>
+                  </tr>
+                    </>
+                  ) : null}
+                </>
+              );
+            })}
+
+            {tasks.length === 0 && !addingTask ? (
+              <tr><td colSpan={periodCols.length + 4} style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>No tasks yet. Click "+ Add task" to start building the budget.</td></tr>
+            ) : null}
+          </tbody>
+
+          {tasks.length > 0 ? (
+            <tfoot>
+              <tr style={{ borderTop: '1px solid var(--line)', background: 'var(--raised)' }}>
+                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Weekly hours</td>
+                {colHours.map((h, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{h.toFixed(1)}</td>)}
+                <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{totalHours.toFixed(1)}</td>
+                <td style={{ padding: '6px 20px' }} />
+              </tr>
+              <tr style={{ borderTop: '1px solid var(--line)' }}>
+                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Weekly cost (eng)</td>
+                {colCost.map((c, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text)' }}>{formatCurrency(c)}</td>)}
+                <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{formatCurrency(totalCost)}</td>
+                <td style={{ padding: '6px 20px' }} />
+              </tr>
+              <tr style={{ borderTop: '1px solid var(--line)' }}>
+                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cumulative vs. {formatCurrency(fee)} fee</td>
+                {cumPct.map((pp, i) => (
+                  <td key={i} style={{ textAlign: 'center', padding: '6px 4px' }}>
+                    <div className="font-data" style={{ fontSize: '11px', color: pp > 100 ? 'var(--hi)' : 'var(--text)' }}>{pp > 100 ? '⚠ ' : ''}{Math.round(pp)}%</div>
+                    <div style={{ height: '3px', background: 'var(--raised)', borderRadius: '999px', marginTop: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(pp, 100)}%`, height: '100%', background: pp > 100 ? 'var(--hi)' : 'var(--accent)' }} />
+                    </div>
+                  </td>
                 ))}
+                <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: totalCost > fee ? 'var(--hi)' : 'var(--text)' }}>{formatCurrency(totalCost)}</td>
+                <td style={{ padding: '6px 20px' }} />
+              </tr>
+            </tfoot>
+          ) : null}
+        </table>
 
-                <div style={{ padding: '6px 20px 6px 40px' }}>
-                  {addResourceTaskId === task.id ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-                      <input
-                        autoFocus
-                        value={resourceQuery}
-                        onChange={(e) => setResourceQuery(e.target.value)}
-                        placeholder="Search resources by name…"
-                        style={{ ...budgetInputStyle, width: '260px' }}
-                      />
-                      {resourceResults.slice(0, 8).map((r: any) => (
-                        <button key={r.id} onClick={() => addResource(task.id, r)} style={{ textAlign: 'left', fontSize: '11px', color: 'var(--text)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: '4px', padding: '5px 10px', cursor: 'pointer' }}>
-                          {r.name} <span style={{ color: 'var(--faint)' }}>· {r.categoryName} · ${parseFloat(r.standardRate).toLocaleString()}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setAddResourceTaskId(task.id)}>
-                      + Add Resource
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-
+        {/* Add task footer */}
         <div style={{ padding: '10px 20px', borderTop: '1px dashed var(--line)' }}>
           {addingTask ? (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -713,10 +1101,21 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
               <button onClick={() => setAddingTask(false)} style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
             </div>
           ) : (
-            <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setAddingTask(true)}>
-              + Add Task
-            </button>
+            <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setAddingTask(true)}>+ Add Task</button>
           )}
+        </div>
+
+        {/* Legend + shortcuts */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '10px 20px', borderTop: '1px solid var(--line)', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--faint)' }}>
+            <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Hours / week:</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--raised)', border: '1px solid var(--line)' }} /> Under 5</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--accent-soft)' }} /> 5–15</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--accent)' }} /> 15+</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ color: 'var(--hi)' }}>!</span> Over-allocated</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '50%', border: '1px dashed var(--accent)' }} /> Open role</span>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--faint)' }}>Arrow keys to move · Enter to edit · Drag the corner to fill</div>
         </div>
       </div>
     </div>

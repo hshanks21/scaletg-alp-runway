@@ -53,7 +53,7 @@ export function AppLayout() {
         position: 'relative',
         padding: '20px',
         height: '100vh',
-        background: 'radial-gradient(900px 500px at 100% 0%, rgba(29,136,55,.07), transparent 65%)',
+        background: '#1d2e28',
       }}
     >
       {/* .app — bordered, rounded shell */}
@@ -263,7 +263,7 @@ export function AppLayout() {
           </aside>
 
           {/* .main */}
-          <main style={{ overflow: 'auto', minHeight: 0 }}>
+          <main style={{ overflow: 'auto', minHeight: 0, padding: '0 20px' }}>
             <Outlet context={{ currentUser }} />
           </main>
         </div>

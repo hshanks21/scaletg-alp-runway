@@ -109,13 +109,18 @@ export function EngagementsPage() {
         {/* Actions */}
         <div style={{ justifySelf: 'end' }}>
           <button
-            className="btn-primary"
             style={{
               fontSize: '12px',
-              padding: '6px 12px',
+              padding: '6px 14px',
               borderRadius: '6px',
-              fontWeight: 500,
+              fontWeight: 600,
+              background: '#B98419',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
             }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#A67216'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#B98419'; }}
           >
             + New Engagement
           </button>

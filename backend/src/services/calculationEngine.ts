@@ -72,6 +72,11 @@ export interface KPIs {
   staffPmdHours: number; // hours(Director + Consultant) ÷ hours(PMD)
   pctBelowDirector: number; // hours(Consultant) ÷ total hours
 
+  // Hours breakdown
+  pmdHours: number; // hours(Partner + PMD)
+  staffHours: number; // hours(Director + Consultant)
+  belowDirectorHours: number; // hours(Consultant)
+
   // Breakdown
   totalHours: number;
   hoursByCategory: Record<string, number>;
@@ -170,6 +175,9 @@ export function calculateKPIs(
     realization,
     staffPmdHours,
     pctBelowDirector,
+    pmdHours,
+    staffHours,
+    belowDirectorHours,
     totalHours,
     hoursByCategory,
   };
