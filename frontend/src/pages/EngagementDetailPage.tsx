@@ -7,6 +7,7 @@ interface EngagementDetail {
   clientName: string;
   name: string;
   engagementOwner: string;
+  engagementType: string;
   status: string;
   agreedBaseFees: string;
   contingentFees: string;
@@ -68,7 +69,7 @@ function computeProgress(startDate: string, endDate: string, periodType: string)
   if (periodType === 'monthly') {
     total = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1);
   } else {
-    const diffDays = (end.getTime() - start.getTime()) / 86400000;
+    const diffDays = Math.round((Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000);
     total = Math.max(1, Math.ceil((diffDays + 1) / 7));
   }
   const now = new Date();
@@ -140,6 +141,8 @@ interface KpiData {
     pmdHours: number;
     staffHours: number;
     belowDirectorHours: number;
+    totalHours: number;
+    hoursByCategory: Record<string, number>;
   };
   budget: {
     marginPct: number | null;
@@ -357,6 +360,200 @@ function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId
   );
 }
 
+// ── Budget Summary (header KPIs, above the staffing plan) ──
+
+function monthSegments(startDate: string, endDate: string): { label: string; weeks: number; isCurrent: boolean }[] {
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  const segs: { label: string; weeks: number; isCurrent: boolean }[] = [];
+  const now = new Date();
+  let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (cursor <= end) {
+    const y = cursor.getFullYear();
+    const m = cursor.getMonth();
+    const segStart = cursor > start ? cursor : start;
+    const monthEnd = new Date(y, m + 1, 0);
+    const segEnd = end < monthEnd ? end : monthEnd;
+    const weeks = Math.max(1, Math.round((segEnd.getTime() - segStart.getTime()) / (7 * 86400000)));
+    segs.push({ label: cursor.toLocaleDateString('en-US', { month: 'short' }), weeks, isCurrent: now >= segStart && now <= segEnd });
+    cursor = new Date(y, m + 1, 1);
+  }
+  return segs;
+}
+
+function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: EngagementDetail; refreshToken?: number }) {
+  const [kpis, setKpis] = useState<KpiData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/engagements/${engagement.id}/kpis?mode=budget`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d.success) setKpis(d.data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [engagement.id, refreshToken]);
+
+  const fmtH = (h: number) => `${Math.round(h * 100) / 100}h`;
+
+  if (!kpis) {
+    return <div style={{ marginBottom: '14px', padding: '20px', color: 'var(--faint)', fontSize: '12px' }}>Budget summary loading…</div>;
+  }
+
+  const b = kpis.budget;
+  const f = kpis.forecast;
+  const fee = f.budgetedRevenue || 0;
+  const marginPct = (b.marginPct ?? 0) * 100;
+  const margin = fee * (b.marginPct ?? 0);
+  const cost = fee - margin;
+  const costPct = fee > 0 ? (cost / fee) * 100 : 0;
+  const realizationPct = (b.realization ?? 0) * 100;
+  const staffPmd = b.staffPmdHours ?? 0;
+  const belowDirectorPct = (b.pctBelowDirector ?? 0) * 100;
+  const totalHours = f.totalHours || 0;
+  const byCat = f.hoursByCategory || {};
+  const pmdH = byCat.PMD || 0;
+  const directorH = byCat.Director || 0;
+  const consultantH = byCat.Consultant || 0;
+  const catSum = Math.max(pmdH + directorH + consultantH, 1);
+
+  const prog = computeProgress(engagement.startDate, engagement.endDate, engagement.periodType);
+  const weeksLeft = prog.total - prog.current + 1;
+  const months = monthSegments(engagement.startDate, engagement.endDate);
+
+  const belowTarget = marginPct < MARGIN_TARGET_PCT;
+  const marginShort = MARGIN_TARGET_PCT - marginPct;
+  const avgDiscount = 100 - realizationPct;
+  const shape = belowDirectorPct >= 60 ? 'Bottom-heavy' : belowDirectorPct <= 40 ? 'Top-heavy' : 'Balanced';
+  const typeLabel = engagement.engagementType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const cardStyle: CSSProperties = { background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '10px', padding: '14px 16px' };
+  const labelStyle: CSSProperties = { fontSize: '10px', fontWeight: 600, letterSpacing: '0.06em', color: 'var(--faint)' };
+
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>Budget summary</span>
+        <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{typeLabel} · {prog.total} weeks · Planning</span>
+      </div>
+
+      {/* PERIOD + FEE strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+        {/* PERIOD */}
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: '10px' }}>PERIOD</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text)' }}>{fmtShortDate(engagement.startDate)} → {fmtShortDate(engagement.endDate)}</span>
+            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{prog.total} weeks · {fmtH(totalHours)} budgeted</span>
+          </div>
+          <div style={{ display: 'flex', gap: '4px', marginTop: '12px', alignItems: 'flex-start' }}>
+            {months.map((mo) => (
+              <div key={mo.label} style={{ flex: mo.weeks, textAlign: 'center' }}>
+                <div style={{ height: '8px', background: mo.isCurrent ? 'var(--accent)' : 'var(--raised)', borderRadius: '2px', border: `1px solid ${mo.isCurrent ? 'var(--accent)' : 'var(--line)'}` }} />
+                <div style={{ fontSize: '9px', color: mo.isCurrent ? 'var(--accent-btn)' : 'var(--faint)', marginTop: '3px', whiteSpace: 'nowrap' }}>{mo.label}{mo.isCurrent ? ' · this week' : ''}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '8px' }}>{prog.unit} {prog.current} of {prog.total} · {weeksLeft} weeks left</div>
+        </div>
+
+        {/* FEE */}
+        <div style={cardStyle}>
+          <div style={{ ...labelStyle, marginBottom: '10px' }}>FEE · WHERE THE {formatCurrency(fee)} GOES</div>
+          <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
+            <div>
+              <div className="font-data" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>{formatCurrency(fee)}</div>
+              <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>fee</div>
+            </div>
+            <div>
+              <div className="font-data" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--muted)' }}>{formatCurrency(cost)}</div>
+              <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>cost</div>
+            </div>
+            <div>
+              <div className="font-data" style={{ fontSize: '18px', fontWeight: 700, color: belowTarget ? 'var(--hi)' : 'var(--accent)' }}>{formatCurrency(margin)}</div>
+              <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>margin</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', height: '10px', borderRadius: '999px', overflow: 'hidden', background: 'var(--raised)', marginTop: '14px' }}>
+            <div style={{ width: `${costPct}%`, background: 'var(--accent-btn)' }} />
+            <div style={{ width: `${marginPct}%`, background: 'var(--hi)' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--faint)', marginTop: '4px' }}>
+            <span>Cost {costPct.toFixed(1)}%</span>
+            <span>Margin {marginPct.toFixed(1)}%</span>
+          </div>
+          {belowTarget && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(180, 81, 44, 0.12)', color: 'var(--hi)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', marginTop: '10px' }}>↓ Margin below [{MARGIN_TARGET_PCT}%] target</div>
+          )}
+        </div>
+      </div>
+
+      {/* KPI cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+        {/* MARGIN */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={labelStyle}>MARGIN</span>
+            {belowTarget && <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--hi)' }}>↓ Below target</span>}
+          </div>
+          <div className="font-data" style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>{marginPct.toFixed(1)}%</div>
+          <div style={{ position: 'relative', height: '8px', background: 'var(--raised)', borderRadius: '999px', marginTop: '10px' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${(MARGIN_TARGET_PCT / 40) * 100}%`, background: 'rgba(180, 81, 44, 0.12)' }} />
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.min(marginPct / 40, 1) * 100}%`, background: 'var(--hi)', borderRadius: '999px' }} />
+            <div style={{ position: 'absolute', left: `${(MARGIN_TARGET_PCT / 40) * 100}%`, top: '-2px', bottom: '-2px', width: '2px', background: 'var(--text)' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: 'var(--faint)', marginTop: '3px' }}>
+            <span>0%</span><span>10%</span><span style={{ color: 'var(--muted)' }}>[{MARGIN_TARGET_PCT}%]</span><span>30%</span><span>40%</span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '8px' }}>{marginShort.toFixed(1)} pts to [{MARGIN_TARGET_PCT}%] target</div>
+        </div>
+
+        {/* REALIZATION */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={labelStyle}>REALIZATION</span>
+            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--accent)' }}>Within target</span>
+          </div>
+          <div className="font-data" style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>{realizationPct.toFixed(1)}%</div>
+          <div style={{ position: 'relative', height: '8px', background: 'var(--raised)', borderRadius: '999px', marginTop: '10px' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${Math.max(0, Math.min((realizationPct - 80) / 20, 1)) * 100}%`, background: 'var(--accent-btn)', borderRadius: '999px' }} />
+            <div style={{ position: 'absolute', left: '50%', top: '-2px', bottom: '-2px', width: '2px', background: 'var(--text)' }} />
+          </div>
+          <div style={{ position: 'relative', height: '14px', fontSize: '9px', color: 'var(--faint)' }}>
+            <span style={{ position: 'absolute', left: 0 }}>80%</span>
+            <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: 'var(--muted)' }}>90% [target]</span>
+            <span style={{ position: 'absolute', right: 0 }}>100%</span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '6px' }}>Engagement ÷ standard rates · {avgDiscount.toFixed(1)}% avg discount</div>
+        </div>
+
+        {/* STAFFING SHAPE */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={labelStyle}>STAFFING SHAPE</span>
+            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--muted)' }}>{shape}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
+            <span className="font-data" style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text)' }}>{staffPmd.toFixed(1)}<span style={{ color: 'var(--faint)', fontSize: '14px' }}> : 1</span></span>
+            <span style={{ fontSize: '10px', color: 'var(--faint)' }}>Staff / PMD hours</span>
+          </div>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', marginTop: '6px' }}>{belowDirectorPct.toFixed(1)}% <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--faint)' }}>hrs below Director · ≥ [60%]</span></div>
+          <div style={{ display: 'flex', height: '10px', borderRadius: '3px', overflow: 'hidden', marginTop: '8px' }}>
+            <div style={{ width: `${(consultantH / catSum) * 100}%`, background: 'var(--accent-btn)' }} />
+            <div style={{ width: `${(directorH / catSum) * 100}%`, background: 'var(--accent)' }} />
+            <div style={{ width: `${(pmdH / catSum) * 100}%`, background: 'var(--accent-soft)' }} />
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', fontSize: '9px', color: 'var(--faint)', marginTop: '6px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><span style={{ width: '7px', height: '7px', borderRadius: '2px', background: 'var(--accent-btn)' }} /> Consultant {fmtH(consultantH)}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><span style={{ width: '7px', height: '7px', borderRadius: '2px', background: 'var(--accent)' }} /> Director {fmtH(directorH)}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}><span style={{ width: '7px', height: '7px', borderRadius: '2px', background: 'var(--accent-soft)' }} /> PMD {fmtH(pmdH)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EngagementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
@@ -454,10 +651,7 @@ export function EngagementDetailPage() {
     return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--hi)', fontSize: '12px' }}>Engagement not found.</div>;
   }
 
-  const fee = parseFloat(engagement.agreedBaseFees || '0') + parseFloat(engagement.contingentFees || '0');
   const meta = STATUS_META[engagement.status] || { label: engagement.status, dot: '#7C8780', text: '#4A544D' };
-  const prog = computeProgress(engagement.startDate, engagement.endDate, engagement.periodType);
-  const progPct = prog.total > 0 ? Math.round((prog.current / prog.total) * 100) : 0;
 
   const tabs: { key: ViewTab; label: string; icon: typeof LayoutGrid }[] = [
     { key: 'budget', label: 'Budget', icon: LayoutGrid },
@@ -569,20 +763,7 @@ export function EngagementDetailPage() {
 
         {/* Metadata row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start', borderTop: '1px solid var(--line)', paddingTop: '14px' }}>
-          <MetaItem label="Fee" value={`${formatCurrency(fee)} fixed`} />
           <MetaItem label="Cadence" value={capitalize(engagement.periodType)} />
-          <MetaItem label="Dates" value={`${fmtShortDate(engagement.startDate)} – ${fmtShortDate(engagement.endDate)}`} />
-          <MetaItem
-            label="Progress"
-            value={(
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ width: '56px', height: '6px', background: 'var(--line)', borderRadius: '999px', overflow: 'hidden', display: 'inline-block' }}>
-                  <span style={{ display: 'block', width: `${progPct}%`, height: '100%', background: 'var(--accent)', borderRadius: '999px' }} />
-                </span>
-                {prog.unit} {prog.current} of {prog.total}
-              </span>
-            )}
-          />
           <MetaItem label="Owner" value={engagement.engagementOwner} />
           <MetaItem label="Last updated" value={`[${relTime(engagement.updatedAt)} by ${engagement.engagementOwner.split(' ')[0]}]`} />
         </div>
@@ -704,7 +885,7 @@ export function EngagementDetailPage() {
   );
 }
 
-// ── Budget View (Task → Resource → Hours grid) ──
+// ── Budget View — stacked weeks (time runs vertically) ──
 
 const budgetInputStyle: CSSProperties = {
   fontSize: '11px',
@@ -715,29 +896,20 @@ const budgetInputStyle: CSSProperties = {
   color: 'var(--text)',
 };
 
+// Categorical palette for per-person segments. Mid-tone so each hue reads on
+// both the dark and light themes; order is stable so a person keeps their color.
+const PERSON_PALETTE = ['#3FA85E', '#D9A441', '#B76BA3', '#5B8DEF', '#E0805C', '#45B8B0', '#9A7B4F', '#7B8BD9'];
+
 function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   const [tasks, setTasks] = useState<any[]>(engagement.tasks || []);
   const [refreshToken, setRefreshToken] = useState(0);
-  const [addingTask, setAddingTask] = useState(false);
-  const [newTask, setNewTask] = useState({ name: '', estimatedHours: '', startDate: '', numPeriods: '' });
-  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [editingTaskName, setEditingTaskName] = useState('');
-  const [addResourceTaskId, setAddResourceTaskId] = useState<string | null>(null);
-  const [resourceQuery, setResourceQuery] = useState('');
-  const [resourceResults, setResourceResults] = useState<any[]>([]);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string> | null>(null);
+  const [openWeek, setOpenWeek] = useState<string | null | undefined>(undefined);
   const [editingHours, setEditingHours] = useState<{ allocId: string; periodId: string; value: string } | null>(null);
   const [editingRate, setEditingRate] = useState<{ allocId: string; value: string } | null>(null);
-  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'month' | 'none'>('month');
-  const [expandedMonths, setExpandedMonths] = useState<Set<string> | null>(null);
-
-  const toggleCollapse = (taskId: string) => {
-    setCollapsedTasks(prev => {
-      const next = new Set(prev);
-      if (next.has(taskId)) next.delete(taskId); else next.add(taskId);
-      return next;
-    });
-  };
+  const [addResourceOpen, setAddResourceOpen] = useState(false);
+  const [resourceQuery, setResourceQuery] = useState('');
+  const [resourceResults, setResourceResults] = useState<any[]>([]);
 
   const bumpKpi = () => setRefreshToken((t) => t + 1);
 
@@ -755,132 +927,10 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
     if (d.success) setTasks(d.data.tasks || []);
   };
 
-  // ── Tasks ──
-  const createTask = async () => {
-    if (!newTask.name.trim()) return;
-    await api('POST', `/api/engagements/${engagement.id}/tasks`, {
-      name: newTask.name.trim(),
-      estimatedHours: newTask.estimatedHours || undefined,
-      startDate: newTask.startDate || undefined,
-      numPeriods: newTask.numPeriods ? parseInt(newTask.numPeriods, 10) : undefined,
-      sortOrder: tasks.length,
-    });
-    setNewTask({ name: '', estimatedHours: '', startDate: '', numPeriods: '' });
-    setAddingTask(false);
-    await reload();
-    bumpKpi();
-  };
+  // ── flat resource pool (all allocations across tasks) ──
+  const allocations = tasks.flatMap((t) => (t.allocations || []).map((a: any) => ({ ...a, _taskId: t.id })));
 
-  const saveTaskName = async (taskId: string) => {
-    if (!editingTaskName.trim()) { setEditingTaskId(null); return; }
-    await api('PATCH', `/api/engagements/${engagement.id}/tasks/${taskId}`, { name: editingTaskName.trim() });
-    setEditingTaskId(null);
-    await reload();
-    bumpKpi();
-  };
-
-  const moveTask = async (taskId: string, dir: -1 | 1) => {
-    const idx = tasks.findIndex((t) => t.id === taskId);
-    const swap = tasks[idx + dir];
-    if (idx < 0 || !swap) return;
-    await api('PATCH', `/api/engagements/${engagement.id}/tasks/${taskId}`, { sortOrder: swap.sortOrder });
-    await api('PATCH', `/api/engagements/${engagement.id}/tasks/${swap.id}`, { sortOrder: tasks[idx].sortOrder });
-    await reload();
-  };
-
-  const deleteTask = async (taskId: string) => {
-    if (!window.confirm('Delete this task and its resources?')) return;
-    await api('DELETE', `/api/engagements/${engagement.id}/tasks/${taskId}`);
-    await reload();
-    bumpKpi();
-  };
-
-  // ── Allocations ──
-  useEffect(() => {
-    if (!addResourceTaskId) return;
-    if (!resourceQuery.trim()) { setResourceResults([]); return; }
-    const t = window.setTimeout(async () => {
-      const d = await api('GET', `/api/resources?search=${encodeURIComponent(resourceQuery.trim())}`);
-      if (d.success) setResourceResults(d.data);
-    }, 250);
-    return () => window.clearTimeout(t);
-  }, [resourceQuery, addResourceTaskId]);
-
-  const addResource = async (taskId: string, resource: any) => {
-    await api('POST', `/api/engagements/${engagement.id}/allocations`, {
-      taskId,
-      resourceId: resource.id,
-      engagementRate: resource.standardRate,
-    });
-    setAddResourceTaskId(null);
-    setResourceQuery('');
-    setResourceResults([]);
-    await reload();
-    bumpKpi();
-  };
-
-  const saveRate = async (allocId: string) => {
-    if (!editingRate || editingRate.allocId !== allocId) return;
-    await api('PATCH', `/api/engagements/${engagement.id}/allocations/${allocId}`, { engagementRate: editingRate.value });
-    setEditingRate(null);
-    await reload();
-    bumpKpi();
-  };
-
-  const saveHours = async () => {
-    if (!editingHours) return;
-    await api('PATCH', `/api/engagements/${engagement.id}/allocations/${editingHours.allocId}/periods`, {
-      periods: [{ id: editingHours.periodId, hours: editingHours.value }],
-    });
-    setEditingHours(null);
-    await reload();
-    bumpKpi();
-  };
-
-  const removeResource = async (allocId: string) => {
-    await api('DELETE', `/api/engagements/${engagement.id}/allocations/${allocId}`);
-    await reload();
-    bumpKpi();
-  };
-
-  const iconBtn: CSSProperties = {
-    background: 'none', border: 'none', cursor: 'pointer',
-    color: 'var(--faint)', fontSize: '11px', padding: '2px 5px',
-  };
-
-  const ghostBtn: CSSProperties = {
-    background: 'transparent', border: '1px solid var(--line-strong)', color: 'var(--muted)',
-    fontSize: '12px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
-    display: 'inline-flex', alignItems: 'center', gap: '6px',
-  };
-  const accentBtn: CSSProperties = {
-    background: 'var(--accent-btn)', color: '#fff', border: 'none',
-    fontSize: '12px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer',
-    display: 'inline-flex', alignItems: 'center', gap: '6px',
-  };
-
-  const initials = (name: string) => {
-    const parts = name.trim().split(/\s+/);
-    if (!parts[0]) return '?';
-    const first = parts[0][0];
-    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
-    return (first + last).toUpperCase();
-  };
-
-  const fmtWk = (iso: string) => {
-    if (!iso) return '';
-    const d = new Date(iso.slice(0, 10) + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  const cellBg = (h: number) => {
-    if (h >= 15) return 'var(--accent-btn)';
-    if (h >= 5) return 'var(--accent-soft)';
-    if (h > 0) return 'var(--raised)';
-    return 'transparent';
-  };
-  const cellFg = (h: number) => (h >= 15 ? '#fff' : 'var(--text)');
-
+  // ── weeks (period columns) ──
   const periodCols: { periodStart: string; periodEnd: string }[] = (() => {
     const map = new Map<string, { periodStart: string; periodEnd: string }>();
     for (const t of tasks) for (const a of t.allocations || []) for (const p of a.periods || []) {
@@ -893,47 +943,62 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
     const now = new Date();
     return now >= new Date(start + 'T00:00:00') && now <= new Date(end + 'T23:59:59');
   };
+  const isPastWeek = (end: string) => new Date() > new Date(end + 'T23:59:59');
 
-  const totalResources = tasks.reduce((n, t) => n + (t.allocations?.length || 0), 0);
-  const fee = parseFloat(engagement.agreedBaseFees || '0') + parseFloat(engagement.contingentFees || '0');
+  const fmtWk = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
 
-  const colHours = periodCols.map((c) => {
-    let h = 0;
-    for (const t of tasks) for (const a of t.allocations || []) for (const pp of a.periods || []) {
-      if (pp.periodStart === c.periodStart) h += parseFloat(pp.hours || '0');
-    }
-    return h;
-  });
-  const colCost = periodCols.map((c) => {
-    let cost = 0;
-    for (const t of tasks) for (const a of t.allocations || []) for (const pp of a.periods || []) {
-      if (pp.periodStart === c.periodStart) cost += parseFloat(pp.hours || '0') * parseFloat(a.engagementRate || '0');
-    }
-    return cost;
-  });
-  const totalHours = colHours.reduce((sum, h) => sum + h, 0);
-  const totalCost = colCost.reduce((sum, c) => sum + c, 0);
-  let _cum = 0;
-  const cumPct = colCost.map((c) => { _cum += c; return fee > 0 ? (_cum / fee) * 100 : 0; });
+  const fmtH = (h: number) => `${Math.round(h * 100) / 100}h`;
+  const fmtCost = (n: number) => {
+    if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+    return `$${Math.round(n).toLocaleString()}`;
+  };
 
-  // ── Month grouping ──
-  const hoursByPeriod = new Map(periodCols.map((c, i) => [c.periodStart, colHours[i]]));
-  const costByPeriod = new Map(periodCols.map((c, i) => [c.periodStart, colCost[i]]));
+  const initials = (name: string) => {
+    const parts = name.trim().split(/\s+/);
+    if (!parts[0]) return '?';
+    const first = parts[0][0];
+    const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+    return (first + last).toUpperCase();
+  };
 
+  const periodFor = (alloc: any, periodStart: string) => (alloc.periods || []).find((p: any) => p.periodStart === periodStart);
+  const personColor = (idx: number) => PERSON_PALETTE[idx % PERSON_PALETTE.length];
+
+  // ── per-week aggregates ──
+  const weekHoursFor = (alloc: any, periodStart: string) => parseFloat(periodFor(alloc, periodStart)?.hours || '0');
+  const weekTotalHours = (periodStart: string) => allocations.reduce((s, a) => s + weekHoursFor(a, periodStart), 0);
+  const weekTotalCost = (periodStart: string) => allocations.reduce((s, a) => s + weekHoursFor(a, periodStart) * parseFloat(a.engagementRate || '0'), 0);
+  const weekStaffed = (periodStart: string) => allocations.filter((a) => weekHoursFor(a, periodStart) > 0).length;
+
+  const segmentsFor = (periodStart: string) => {
+    const total = weekTotalHours(periodStart);
+    if (total <= 0) return [];
+    return allocations
+      .map((a, i) => ({ name: a.resourceName, hours: weekHoursFor(a, periodStart), color: personColor(i) }))
+      .filter((s) => s.hours > 0)
+      .map((s) => ({ ...s, pct: (s.hours / total) * 100 }));
+  };
+
+  // ── month groups ──
   const monthGroups = (() => {
-    const groups: { key: string; label: string; weeks: { periodStart: string; periodEnd: string }[]; isCurrent: boolean; isPast: boolean; hours: number; cost: number }[] = [];
+    const groups: { key: string; label: string; weeks: { periodStart: string; periodEnd: string }[]; isPast: boolean; isCurrent: boolean; hours: number; cost: number }[] = [];
     const map = new Map<string, number>();
-    periodCols.forEach((c, ci) => {
+    periodCols.forEach((c) => {
       const d = new Date(c.periodEnd.slice(0, 10) + 'T00:00:00');
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!map.has(key)) {
         map.set(key, groups.length);
-        groups.push({ key, label: d.toLocaleDateString('en-US', { month: 'long' }), weeks: [], isCurrent: false, isPast: true, hours: 0, cost: 0 });
+        groups.push({ key, label: d.toLocaleDateString('en-US', { month: 'long' }), weeks: [], isPast: true, isCurrent: false, hours: 0, cost: 0 });
       }
       const g = groups[map.get(key)!];
       g.weeks.push(c);
-      g.hours += colHours[ci];
-      g.cost += colCost[ci];
+      g.hours += weekTotalHours(c.periodStart);
+      g.cost += weekTotalCost(c.periodStart);
       if (isThisWeek(c.periodStart, c.periodEnd)) g.isCurrent = true;
     });
     const now = new Date();
@@ -941,12 +1006,20 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
     return groups;
   })();
 
-  const currentMonthKey = monthGroups.find((m) => m.isCurrent)?.key;
-  const defaultExpandedKey = currentMonthKey ?? monthGroups[monthGroups.length - 1]?.key;
-  const expanded = expandedMonths ?? new Set(defaultExpandedKey ? [defaultExpandedKey] : []);
+  const currentWeek = periodCols.find((c) => isThisWeek(c.periodStart, c.periodEnd));
+
+  // default expansion: current + future months; if everything is past, the last month
+  const defaultExpandedKeys = (() => {
+    const notPast = monthGroups.filter((m) => !m.isPast).map((m) => m.key);
+    if (notPast.length) return new Set(notPast);
+    const last = monthGroups[monthGroups.length - 1];
+    return new Set(last ? [last.key] : []);
+  })();
+  const expanded = expandedMonths ?? defaultExpandedKeys;
+
   const toggleMonth = (key: string) => {
     setExpandedMonths((prev) => {
-      const base = prev ?? new Set(defaultExpandedKey ? [defaultExpandedKey] : []);
+      const base = prev ?? defaultExpandedKeys;
       const next = new Set(base);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -955,309 +1028,352 @@ function BudgetView({ engagement }: { engagement: EngagementDetail }) {
   const expandAll = () => setExpandedMonths(new Set(monthGroups.map((m) => m.key)));
   const collapseAll = () => setExpandedMonths(new Set());
 
-  const visibleCols: any[] = viewMode === 'month'
-    ? monthGroups.flatMap((m): any[] => expanded.has(m.key)
-      ? m.weeks.map((w) => ({ type: 'week', periodStart: w.periodStart, periodEnd: w.periodEnd }))
-      : [{ type: 'month', key: m.key, weeks: m.weeks }])
-    : periodCols.map((c) => ({ type: 'week', periodStart: c.periodStart, periodEnd: c.periodEnd }));
-  const middleColSpan = visibleCols.length;
-  const fullColSpan = middleColSpan + 4;
+  const defaultOpenKey = currentWeek?.periodStart ?? periodCols[periodCols.length - 1]?.periodStart ?? null;
+  const openKey = openWeek === undefined ? defaultOpenKey : openWeek;
+  const toggleWeek = (periodStart: string) => setOpenWeek(openKey === periodStart ? null : periodStart);
 
-  const colHoursFor = (col: any): number => col.type === 'month'
-    ? col.weeks.reduce((sum: number, w: any) => sum + (hoursByPeriod.get(w.periodStart) || 0), 0)
-    : (hoursByPeriod.get(col.periodStart) || 0);
-  const colCostFor = (col: any): number => col.type === 'month'
-    ? col.weeks.reduce((sum: number, w: any) => sum + (costByPeriod.get(w.periodStart) || 0), 0)
-    : (costByPeriod.get(col.periodStart) || 0);
-  const allocHoursFor = (alloc: any, col: any): number => col.type === 'month'
-    ? col.weeks.reduce((sum: number, w: any) => sum + parseFloat((alloc.periods || []).find((x: any) => x.periodStart === w.periodStart)?.hours || '0'), 0)
-    : parseFloat((alloc.periods || []).find((x: any) => x.periodStart === col.periodStart)?.hours || '0');
+  const jumpToThisWeek = () => {
+    const target = currentWeek ?? periodCols[periodCols.length - 1];
+    if (!target) return;
+    const d = new Date(target.periodEnd.slice(0, 10) + 'T00:00:00');
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    setExpandedMonths(new Set([key]));
+    setOpenWeek(target.periodStart);
+  };
+
+  const weekIndex = (periodStart: string) => periodCols.findIndex((c) => c.periodStart === periodStart) + 1;
+
+  // ── editing ──
+  const saveHours = async () => {
+    if (!editingHours) return;
+    await api('PATCH', `/api/engagements/${engagement.id}/allocations/${editingHours.allocId}/periods`, {
+      periods: [{ id: editingHours.periodId, hours: editingHours.value }],
+    });
+    setEditingHours(null);
+    await reload();
+    bumpKpi();
+  };
+
+  const saveRate = async (allocId: string) => {
+    if (!editingRate || editingRate.allocId !== allocId) return;
+    await api('PATCH', `/api/engagements/${engagement.id}/allocations/${allocId}`, { engagementRate: editingRate.value });
+    setEditingRate(null);
+    await reload();
+    bumpKpi();
+  };
+
+  const addResource = async (resource: any) => {
+    const taskId = tasks[0]?.id;
+    if (!taskId) return;
+    await api('POST', `/api/engagements/${engagement.id}/allocations`, {
+      taskId,
+      resourceId: resource.id,
+      engagementRate: resource.standardRate,
+    });
+    setAddResourceOpen(false);
+    setResourceQuery('');
+    setResourceResults([]);
+    await reload();
+    bumpKpi();
+  };
+
+  const removeResource = async (allocId: string) => {
+    await api('DELETE', `/api/engagements/${engagement.id}/allocations/${allocId}`);
+    await reload();
+    bumpKpi();
+  };
+
+  const copyFromPreviousWeek = async (weekStart: string) => {
+    const idx = periodCols.findIndex((c) => c.periodStart === weekStart);
+    if (idx <= 0) return;
+    const prev = periodCols[idx - 1].periodStart;
+    for (const alloc of allocations) {
+      const curP = periodFor(alloc, weekStart);
+      const prevP = periodFor(alloc, prev);
+      if (curP && prevP) {
+        await api('PATCH', `/api/engagements/${engagement.id}/allocations/${alloc.id}/periods`, {
+          periods: [{ id: curP.id, hours: prevP.hours }],
+        });
+      }
+    }
+    await reload();
+    bumpKpi();
+  };
+
+  const applyToRemainingWeeks = async (weekStart: string) => {
+    const idx = periodCols.findIndex((c) => c.periodStart === weekStart);
+    const futureStarts = periodCols.slice(idx + 1).map((c) => c.periodStart);
+    for (const alloc of allocations) {
+      const srcP = periodFor(alloc, weekStart);
+      if (!srcP) continue;
+      const updates = futureStarts
+        .map((s) => periodFor(alloc, s))
+        .filter((p: any) => p)
+        .map((p: any) => ({ id: p.id, hours: srcP.hours }));
+      if (updates.length) {
+        await api('PATCH', `/api/engagements/${engagement.id}/allocations/${alloc.id}/periods`, { periods: updates });
+      }
+    }
+    await reload();
+    bumpKpi();
+  };
+
+  // ── resource search ──
+  useEffect(() => {
+    if (!addResourceOpen) return;
+    if (!resourceQuery.trim()) { setResourceResults([]); return; }
+    const t = window.setTimeout(async () => {
+      const d = await api('GET', `/api/resources?search=${encodeURIComponent(resourceQuery.trim())}`);
+      if (d.success) setResourceResults(d.data);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [resourceQuery, addResourceOpen]);
+
+  // ── people (totals by person) ──
+  const people = allocations.map((a, i) => ({
+    ...a,
+    idx: i,
+    hours: (a.periods || []).reduce((s: number, p: any) => s + parseFloat(p.hours || '0'), 0),
+    cost: (a.periods || []).reduce((s: number, p: any) => s + parseFloat(p.hours || '0') * parseFloat(a.engagementRate || '0'), 0),
+  }));
+  const totalHours = people.reduce((s, p) => s + p.hours, 0);
+  const totalCost = people.reduce((s, p) => s + p.cost, 0);
+
+  const ghostBtn: CSSProperties = {
+    background: 'transparent', border: '1px solid var(--line-strong)', color: 'var(--muted)',
+    fontSize: '12px', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: '6px',
+  };
+  const accentBtn: CSSProperties = {
+    background: 'var(--accent-btn)', color: '#fff', border: 'none',
+    fontSize: '12px', padding: '6px 14px', borderRadius: '6px', cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: '6px',
+  };
+  const iconBtn: CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: 'var(--faint)', fontSize: '11px', padding: '2px 5px',
+  };
+
+  const gridCols: CSSProperties = { display: 'grid', gridTemplateColumns: '150px 1fr 84px 96px', gap: '12px', alignItems: 'center' };
 
   return (
     <div>
-      <KpiSummaryLine engagementId={engagement.id} mode="budget" refreshToken={refreshToken} />
+      <BudgetSummary engagement={engagement} refreshToken={refreshToken} />
 
-      <div style={{ background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden', marginBottom: '14px' }}>
-        {/* Title bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '14px 20px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>Staffing plan</span>
-            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{periodCols.length} weeks · {totalResources} resources · {tasks.length} task{tasks.length === 1 ? '' : 's'}</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button style={ghostBtn} title="Spread a total across selected cells">⇄ Spread hours</button>
-            <button style={ghostBtn} title="Fill selected cells to the right">→ Fill right</button>
-            <button style={ghostBtn} title="Paste hours from a spreadsheet">⎘ Paste from Excel</button>
-            <button style={ghostBtn} title="Toggle rate columns">$ Rates</button>
-            <button style={accentBtn} onClick={() => setAddingTask(true)}>+ Add task</button>
-          </div>
-        </div>
-
-        {/* Grouping toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '10px 20px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Group weeks by</span>
-            <div style={{ display: 'flex', gap: '2px', padding: '2px', border: '1px solid var(--line)', borderRadius: '7px', background: 'var(--panel)' }}>
-              {(['month', 'phase', 'none'] as const).map((m) => (
-                <button
-                  key={m}
-                  disabled={m === 'phase'}
-                  onClick={() => { if (m === 'month' || m === 'none') setViewMode(m); }}
-                  title={m === 'phase' ? 'Phases not modeled yet' : undefined}
-                  style={{
-                    fontSize: '11px', padding: '4px 12px', borderRadius: '5px', border: 'none', cursor: m === 'phase' ? 'not-allowed' : 'pointer',
-                    background: viewMode === m ? 'var(--raised)' : 'transparent',
-                    color: m === 'phase' ? 'var(--faint)' : viewMode === m ? 'var(--accent-btn)' : 'var(--muted)',
-                    fontWeight: viewMode === m ? 600 : 400,
-                    opacity: m === 'phase' ? 0.5 : 1,
-                  }}
-                >
-                  {m === 'month' ? 'Month' : m === 'phase' ? 'Phase' : 'None'}
-                </button>
-              ))}
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+        {/* ── LEFT: stacked weeks ── */}
+        <div style={{ flex: 1, minWidth: 0, background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden' }}>
+          {/* Title bar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '14px 20px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text)' }}>Staffing plan</span>
+              <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{periodCols.length} weeks · {allocations.length} resources</span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button style={ghostBtn} onClick={expandAll}>Expand all</button>
+              <button style={ghostBtn} onClick={collapseAll}>Collapse all</button>
+              <button style={ghostBtn} onClick={jumpToThisWeek} title="Jump to the current week">This week</button>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <button style={ghostBtn} onClick={expandAll} title="Expand every month">↔ Expand all</button>
-            <button style={ghostBtn} onClick={collapseAll} title="Collapse every month">↔ Collapse all</button>
-            {currentMonthKey ? <button style={ghostBtn} onClick={() => setExpandedMonths(new Set([currentMonthKey]))} title="Jump to the current month">⊙ This month</button> : null}
+
+          {/* Column header */}
+          <div style={{ ...gridCols, padding: '10px 20px', borderBottom: '1px solid var(--line)' }}>
+            <div />
+            <div />
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textAlign: 'right' }}>HOURS</div>
+            <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--muted)', textAlign: 'right' }}>COST</div>
           </div>
-        </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            {viewMode === 'month' ? (
-              <>
-                <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                  <th rowSpan={2} style={{ textAlign: 'left', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Resource</th>
-                  <th rowSpan={2} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Std → Eng rate</th>
-                  {monthGroups.map((m) => (
-                    <th key={m.key} colSpan={expanded.has(m.key) ? m.weeks.length : 1} onClick={() => toggleMonth(m.key)} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', cursor: 'pointer', borderLeft: '1px solid var(--line)' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--accent)' }}>{expanded.has(m.key) ? '⌄' : '›'}</span>
-                        <span>{m.label}</span>
-                      </div>
-                      <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>{m.weeks.length} wk{m.weeks.length === 1 ? '' : 's'} · {m.hours.toFixed(1)}h{m.isCurrent ? ' · Current' : ''}</div>
-                    </th>
-                  ))}
-                  <th rowSpan={2} style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '8px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Hours</th>
-                  <th rowSpan={2} style={{ textAlign: 'right', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', verticalAlign: 'bottom' }}>Cost (eng)</th>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                  {monthGroups.map((m) => (
-                    expanded.has(m.key)
-                      ? m.weeks.map((w) => (
-                          <th key={w.periodStart} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', borderLeft: '1px solid var(--line)' }}>
-                            <div>{isThisWeek(w.periodStart, w.periodEnd) ? (
-                              <span style={{ background: 'var(--accent-btn)', color: '#fff', fontSize: '10px', padding: '1px 7px', borderRadius: '999px', fontWeight: 600 }}>This week</span>
-                            ) : `Wk ${periodCols.findIndex((pp) => pp.periodStart === w.periodStart) + 1}`}</div>
-                            <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>W/E {fmtWk(w.periodEnd)}</div>
-                          </th>
-                        ))
-                      : <th key={m.key} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)', borderLeft: '1px solid var(--line)' }}>
-                          <div>{m.weeks.length} wks / Total</div>
-                          <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>{m.hours.toFixed(1)}h</div>
-                        </th>
-                  ))}
-                </tr>
-              </>
-            ) : (
-              <tr style={{ borderBottom: '1px solid var(--line)' }}>
-                <th style={{ textAlign: 'left', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Resource</th>
-                <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Std → Eng rate</th>
-                {periodCols.map((c, i) => (
-                  <th key={c.periodStart} style={{ textAlign: 'center', padding: '8px 6px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>
-                    <div>{isThisWeek(c.periodStart, c.periodEnd) ? (
-                      <span style={{ background: 'var(--accent-btn)', color: '#fff', fontSize: '10px', padding: '1px 7px', borderRadius: '999px', fontWeight: 600 }}>This week</span>
-                    ) : `Wk ${i + 1}`}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--faint)', fontWeight: 400, marginTop: '2px' }}>W/E {fmtWk(c.periodEnd)}</div>
-                  </th>
-                ))}
-                <th style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '8px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Hours</th>
-                <th style={{ textAlign: 'right', padding: '8px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cost (eng)</th>
-              </tr>
-            )}
-          </thead>
-          <tbody>
-            {tasks.map((task, ti) => {
-              const allocs = task.allocations || [];
-              const taskHours = allocs.reduce((sum: number, a: any) => sum + (a.periods || []).reduce((x: number, pp: any) => x + parseFloat(pp.hours || '0'), 0), 0);
-              const taskCost = allocs.reduce((sum: number, a: any) => sum + (a.periods || []).reduce((x: number, pp: any) => x + parseFloat(pp.hours || '0') * parseFloat(a.engagementRate || '0'), 0), 0);
-              const estDiff = taskHours - parseFloat(task.estimatedHours || '0');
-              return (
-                <>
-                  <tr key={'task-' + task.id} style={{ background: 'var(--raised)', borderBottom: '1px solid var(--line)' }}>
-                    <td colSpan={2} style={{ padding: '8px 20px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--accent)', cursor: 'pointer' }} onClick={() => toggleCollapse(task.id)}>{collapsedTasks.has(task.id) ? '▶' : '▼'}</span>
-                        {editingTaskId === task.id ? (
-                          <input autoFocus value={editingTaskName} onChange={(e) => setEditingTaskName(e.target.value)} onBlur={() => saveTaskName(task.id)} onKeyDown={(e) => { if (e.key === 'Enter') saveTaskName(task.id); else if (e.key === 'Escape') setEditingTaskId(null); }} style={budgetInputStyle} />
-                        ) : (
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', cursor: 'pointer' }} onClick={() => { setEditingTaskId(task.id); setEditingTaskName(task.name); }}>{task.name}</span>
-                        )}
-                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '999px', padding: '1px 8px' }}>{Math.round(taskHours)}h alloc · {task.estimatedHours || 0}h est · {estDiff >= 0 ? '+' : ''}{estDiff.toFixed(1)}h</span>
-                        <span style={{ fontSize: '10.5px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '999px', padding: '1px 8px' }}>{formatCurrency(taskCost)}</span>
-                      </div>
-                    </td>
-                    <td colSpan={middleColSpan + 2} style={{ textAlign: 'right', padding: '8px 20px' }}>
-                      <div style={{ display: 'inline-flex', gap: '2px' }}>
-                        <button style={iconBtn} title="Split hours evenly">⧉</button>
-                        <button style={iconBtn} title="More">⋯</button>
-                        <button style={iconBtn} onClick={() => moveTask(task.id, -1)} disabled={ti === 0} title="Move up">↑</button>
-                        <button style={iconBtn} onClick={() => moveTask(task.id, 1)} disabled={ti === tasks.length - 1} title="Move down">↓</button>
-                        <button style={iconBtn} onClick={() => deleteTask(task.id)} title="Delete task">✕</button>
-                      </div>
-                    </td>
-                  </tr>
+          {/* Months → weeks */}
+          {monthGroups.map((m) => (
+            <div key={m.key}>
+              <button
+                onClick={() => toggleMonth(m.key)}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', textAlign: 'left', background: 'var(--raised)', border: 'none', borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', cursor: 'pointer', padding: '9px 20px', color: 'var(--text)' }}
+              >
+                <span style={{ fontSize: '10px', color: 'var(--accent)' }}>{expanded.has(m.key) ? '⌄' : '›'}</span>
+                <span style={{ fontSize: '12px', fontWeight: 600 }}>{m.label}</span>
+                <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{m.weeks.length} wk{m.weeks.length === 1 ? '' : 's'} · {fmtH(m.hours)} · {fmtCost(m.cost)}</span>
+                {m.isCurrent ? <span style={{ fontSize: '10px', color: 'var(--accent-btn)', border: '1px solid var(--accent)', borderRadius: '999px', padding: '0 8px', fontWeight: 600 }}>Current</span> : null}
+              </button>
 
-                  {!collapsedTasks.has(task.id) ? (
-                    <>
-                  {allocs.map((alloc: any) => {
-                    const std = parseFloat(alloc.standardRate || '0');
-                    const eng = parseFloat(alloc.engagementRate || '0');
-                    const disc = std > 0 ? ((eng - std) / std) * 100 : 0;
-                    const rowHours = (alloc.periods || []).reduce((sum: number, pp: any) => sum + parseFloat(pp.hours || '0'), 0);
-                    const rowCost = (alloc.periods || []).reduce((sum: number, pp: any) => sum + parseFloat(pp.hours || '0') * eng, 0);
-                    return (
-                      <tr key={alloc.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                        <td style={{ padding: '10px 20px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ width: '26px', height: '26px', borderRadius: '50%', background: alloc.isPlaceholder ? 'transparent' : 'var(--accent-btn)', border: alloc.isPlaceholder ? '1px dashed var(--faint)' : 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: alloc.isPlaceholder ? 'var(--faint)' : '#fff', fontSize: '11px', fontWeight: 700, flexShrink: 0 }}>{alloc.isPlaceholder ? '?' : initials(alloc.resourceName || '')}</span>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', fontStyle: alloc.isPlaceholder ? 'italic' : 'normal' }}>{alloc.resourceName || 'Unknown'}</div>
-                              <div style={{ display: 'flex', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
-                                {alloc.categoryName ? <span style={{ fontSize: '10px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '4px', padding: '0 5px' }}>{alloc.categoryName}</span> : null}
-                                {alloc.isPlaceholder ? <span style={{ fontSize: '10px', color: 'var(--accent)', border: '1px dashed var(--accent)', borderRadius: '4px', padding: '0 5px' }}>Open role</span> : rowHours === 0 ? <span style={{ fontSize: '10px', color: 'var(--hi)', background: 'rgba(180, 81, 44, 0.1)', borderRadius: '4px', padding: '0 5px' }}>Not allocated</span> : null}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: '10px 12px', fontSize: '11.5px', color: 'var(--text)', whiteSpace: 'nowrap' }}>
-                          <span className="font-data">${std.toLocaleString()}</span> <span style={{ color: 'var(--faint)' }}>→</span> <span className="font-data">${eng.toLocaleString()}</span>
-                          <div style={{ display: 'inline-block', fontSize: '10px', fontWeight: 600, color: 'var(--accent-btn)', background: 'var(--raised)', borderRadius: '999px', padding: '1px 7px', marginTop: '3px' }}>{disc.toFixed(1)}%</div>
-                        </td>
-                        {visibleCols.map((col) => {
-                          if (col.type === 'month') {
-                            const mh = allocHoursFor(alloc, col);
-                            return (
-                              <td key={'m-' + col.key} style={{ padding: '6px 4px', textAlign: 'center' }}>
-                                <div className="font-data" style={{ background: mh > 0 ? 'var(--raised)' : 'transparent', color: 'var(--text)', borderRadius: '4px', padding: '4px 0', border: mh > 0 ? 'none' : '1px dashed var(--line)' }}>{mh > 0 ? mh.toFixed(1) : '—'}</div>
-                              </td>
-                            );
-                          }
-                          const pp = (alloc.periods || []).find((x: any) => x.periodStart === col.periodStart);
-                          const val = parseFloat(pp?.hours || '0');
-                          return (
-                            <td key={col.periodStart} style={{ padding: '6px 4px', textAlign: 'center' }}>
-                              {editingHours?.periodId === pp?.id ? (
-                                <input autoFocus value={editingHours!.value} onChange={(e) => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: e.target.value })} onBlur={() => saveHours()} onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); else if (e.key === 'Escape') setEditingHours(null); }} style={{ ...budgetInputStyle, width: '48px', textAlign: 'center' }} />
-                              ) : (
-                                <div className="font-data" onClick={pp ? () => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: pp.hours }) : undefined} style={{ cursor: pp ? 'pointer' : 'default', background: cellBg(val), color: cellFg(val), borderRadius: '4px', padding: '4px 0', border: val > 0 ? 'none' : '1px dashed var(--line)' }}>{val > 0 ? val.toFixed(1) : '—'}</div>
-                              )}
-                            </td>
-                          );
-                        })}
-                        <td className="font-data" style={{ borderLeft: '1px solid var(--line)', padding: '10px 14px', textAlign: 'right', fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{rowHours.toFixed(1)}</td>
-                        <td className="font-data" style={{ padding: '10px 20px', textAlign: 'right', fontSize: '12px', color: 'var(--text)' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                            {formatCurrency(rowCost)}
-                            <button style={iconBtn} onClick={() => removeResource(alloc.id)} title="Remove resource">✕</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+              {expanded.has(m.key) && m.weeks.map((w) => {
+                const start = w.periodStart;
+                const totalH = weekTotalHours(start);
+                const totalC = weekTotalCost(start);
+                const staffed = weekStaffed(start);
+                const segs = segmentsFor(start);
+                const isCurrent = isThisWeek(w.periodStart, w.periodEnd);
+                const isOpen = openKey === start;
+                const wi = weekIndex(start);
+                return (
+                  <div key={start} style={{ borderBottom: '1px solid var(--line)', borderLeft: isOpen ? '3px solid var(--accent-btn)' : '3px solid transparent' }}>
+                    {/* Week row */}
+                    <div
+                      onClick={() => toggleWeek(start)}
+                      style={{ ...gridCols, padding: '8px 20px', cursor: 'pointer', background: isCurrent ? 'var(--accent-soft)' : 'transparent' }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '11px', color: 'var(--accent)', width: '10px', textAlign: 'center' }}>{isOpen ? '⌄' : '›'}</span>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>W/E {fmtWk(w.periodEnd)}</span>
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '1px', paddingLeft: '16px' }}>
+                          {isCurrent ? (
+                            <span style={{ color: 'var(--accent-btn)', fontWeight: 600 }}>This week</span>
+                          ) : isPastWeek(w.periodEnd) ? (
+                            `Past · Wk ${wi}`
+                          ) : (
+                            `Future · Wk ${wi}`
+                          )}
+                        </div>
+                      </div>
 
-                  <tr key={'add-' + task.id} style={{ borderBottom: '1px solid var(--line)' }}>
-                    <td colSpan={fullColSpan} style={{ padding: '6px 20px' }}>
-                      {addResourceTaskId === task.id ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
-                          <input autoFocus value={resourceQuery} onChange={(e) => setResourceQuery(e.target.value)} placeholder="Search resources by name…" style={{ ...budgetInputStyle, width: '260px' }} />
-                          {resourceResults.slice(0, 8).map((r: any) => (
-                            <button key={r.id} onClick={() => addResource(task.id, r)} style={{ textAlign: 'left', fontSize: '11px', color: 'var(--text)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: '4px', padding: '5px 10px', cursor: 'pointer' }}>{r.name} <span style={{ color: 'var(--faint)' }}>· {r.categoryName} · ${parseFloat(r.standardRate).toLocaleString()}</span></button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <div
+                          title={segs.map((s) => `${s.name}: ${fmtH(s.hours)}`).join(' · ')}
+                          style={{ display: 'flex', height: '16px', borderRadius: '4px', overflow: 'hidden', background: 'var(--raised)', flex: 1, border: isCurrent ? '1px solid var(--accent)' : '1px solid var(--line)' }}
+                        >
+                          {segs.map((s, i) => (
+                            <div key={i} style={{ width: `${s.pct}%`, background: s.color }} />
                           ))}
                         </div>
-                      ) : (
-                        <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: '1px dashed var(--accent)', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }} onClick={() => setAddResourceTaskId(task.id)}>+ Add resource to {task.name}</button>
-                      )}
-                    </td>
-                  </tr>
-                    </>
-                  ) : null}
-                </>
-              );
-            })}
+                        <span style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{staffed} of {allocations.length} staffed</span>
+                      </div>
 
-            {tasks.length === 0 && !addingTask ? (
-              <tr><td colSpan={fullColSpan} style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>No tasks yet. Click "+ Add task" to start building the budget.</td></tr>
-            ) : null}
-          </tbody>
+                      <div className="font-data" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', textAlign: 'right' }}>{fmtH(totalH)}</div>
+                      <div className="font-data" style={{ fontSize: '12px', color: 'var(--text)', textAlign: 'right' }}>{fmtCost(totalC)}</div>
+                    </div>
 
-          {tasks.length > 0 ? (
-            <tfoot>
-              <tr style={{ borderTop: '1px solid var(--line)', background: 'var(--raised)' }}>
-                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>{viewMode === 'month' ? 'Hours' : 'Weekly hours'}</td>
-                {visibleCols.map((col, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{colHoursFor(col).toFixed(1)}</td>)}
-                <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{totalHours.toFixed(1)}</td>
-                <td style={{ padding: '6px 20px' }} />
-              </tr>
-              <tr style={{ borderTop: '1px solid var(--line)' }}>
-                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>{viewMode === 'month' ? 'Cost (eng)' : 'Weekly cost (eng)'}</td>
-                {visibleCols.map((col, i) => <td key={i} className="font-data" style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text)' }}>{formatCurrency(colCostFor(col))}</td>)}
-                <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{formatCurrency(totalCost)}</td>
-                <td style={{ padding: '6px 20px' }} />
-              </tr>
-              <tr style={{ borderTop: '1px solid var(--line)' }}>
-                <td colSpan={2} style={{ padding: '6px 20px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Cumulative vs. {formatCurrency(fee)} fee</td>
-                {(() => {
-                  let _run = 0;
-                  return visibleCols.map((col, i) => {
-                    _run += colCostFor(col);
-                    const pp = fee > 0 ? (_run / fee) * 100 : 0;
-                    return (
-                      <td key={i} style={{ textAlign: 'center', padding: '6px 4px' }}>
-                        <div className="font-data" style={{ fontSize: '11px', color: pp > 100 ? 'var(--hi)' : 'var(--text)' }}>{pp > 100 ? '⚠ ' : ''}{Math.round(pp)}%</div>
-                        <div style={{ height: '3px', background: 'var(--raised)', borderRadius: '999px', marginTop: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${Math.min(pp, 100)}%`, height: '100%', background: pp > 100 ? 'var(--hi)' : 'var(--accent)' }} />
+                    {/* Expanded week detail */}
+                    {isOpen ? (
+                      <div style={{ borderTop: '1px solid var(--line)', background: 'var(--raised)', padding: '12px 20px 14px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--line)' }}>
+                              <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Resource</th>
+                              <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Std rate</th>
+                              <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Eng rate</th>
+                              <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Hours</th>
+                              <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Fees @ Std</th>
+                              <th style={{ textAlign: 'right', padding: '6px 8px', fontSize: '11px', fontWeight: 600, color: 'var(--muted)' }}>Fees @ Eng</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allocations.map((alloc, ai) => {
+                              const pp = periodFor(alloc, start);
+                              const hours = parseFloat(pp?.hours || '0');
+                              const eng = parseFloat(alloc.engagementRate || '0');
+                              const std = parseFloat(alloc.standardRate || '0');
+                              const color = personColor(ai);
+                              return (
+                                <tr key={alloc.id} style={{ borderBottom: '1px solid var(--line)' }}>
+                                  <td style={{ padding: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                      <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: alloc.isPlaceholder ? 'transparent' : 'var(--accent-btn)', border: alloc.isPlaceholder ? '1px dashed var(--faint)' : 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: alloc.isPlaceholder ? 'var(--faint)' : '#fff', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>{alloc.isPlaceholder ? '?' : initials(alloc.resourceName || '')}</span>
+                                      <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', fontStyle: alloc.isPlaceholder ? 'italic' : 'normal' }}>{alloc.resourceName || 'Unknown'}</div>
+                                        <div style={{ display: 'flex', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                          {alloc.categoryName ? <span style={{ fontSize: '10px', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: '4px', padding: '0 5px' }}>{alloc.categoryName}</span> : null}
+                                          {alloc.isPlaceholder ? <span style={{ fontSize: '10px', color: 'var(--accent)', border: '1px dashed var(--accent)', borderRadius: '4px', padding: '0 5px' }}>Open role</span> : hours === 0 ? <span style={{ fontSize: '10px', color: 'var(--hi)', background: 'rgba(180, 81, 44, 0.1)', borderRadius: '4px', padding: '0 5px' }}>Not allocated</span> : null}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                                    <span className="font-data" style={{ fontSize: '11.5px', color: 'var(--faint)' }}>${std.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  </td>
+                                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                                    {editingRate?.allocId === alloc.id ? (
+                                      <input autoFocus value={editingRate!.value} onChange={(e) => setEditingRate({ allocId: alloc.id, value: e.target.value })} onBlur={() => saveRate(alloc.id)} onKeyDown={(e) => { if (e.key === 'Enter') saveRate(alloc.id); else if (e.key === 'Escape') setEditingRate(null); }} style={{ ...budgetInputStyle, width: '70px', textAlign: 'right' }} />
+                                    ) : (
+                                      <span className="font-data" onClick={() => setEditingRate({ allocId: alloc.id, value: String(eng) })} style={{ fontSize: '11.5px', color: 'var(--text)', cursor: 'pointer' }}>${eng.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                                    {editingHours?.periodId === pp?.id ? (
+                                      <input autoFocus value={editingHours!.value} onChange={(e) => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: e.target.value })} onBlur={saveHours} onKeyDown={(e) => { if (e.key === 'Enter') saveHours(); else if (e.key === 'Escape') setEditingHours(null); }} style={{ ...budgetInputStyle, width: '56px', textAlign: 'right' }} />
+                                    ) : (
+                                      <span className="font-data" onClick={pp ? () => setEditingHours({ allocId: alloc.id, periodId: pp.id, value: String(hours) }) : undefined} style={{ fontSize: '11.5px', color: hours > 0 ? 'var(--text)' : 'var(--faint)', cursor: pp ? 'pointer' : 'default' }}>{hours > 0 ? fmtH(hours) : '—'}</span>
+                                    )}
+                                  </td>
+                                  <td className="font-data" style={{ padding: '8px', textAlign: 'right', fontSize: '11.5px', color: 'var(--faint)' }}>{hours > 0 ? fmtCost(hours * std) : '$0'}</td>
+                                  <td className="font-data" style={{ padding: '8px', textAlign: 'right', fontSize: '11.5px', color: 'var(--text)' }}>{hours > 0 ? fmtCost(hours * eng) : '$0'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
+                          {addResourceOpen ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+                              <input autoFocus value={resourceQuery} onChange={(e) => setResourceQuery(e.target.value)} placeholder="Search resources by name…" style={{ ...budgetInputStyle, width: '240px' }} />
+                              {resourceResults.slice(0, 8).map((r: any) => (
+                                <button key={r.id} onClick={() => addResource(r)} style={{ textAlign: 'left', fontSize: '11px', color: 'var(--text)', background: 'var(--raised)', border: '1px solid var(--line)', borderRadius: '4px', padding: '5px 10px', cursor: 'pointer' }}>{r.name} <span style={{ color: 'var(--faint)' }}>· {r.categoryName} · ${parseFloat(r.standardRate).toLocaleString()}</span></button>
+                              ))}
+                            </div>
+                          ) : (
+                            <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: '1px dashed var(--accent)', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }} onClick={() => setAddResourceOpen(true)}>+ Add resource</button>
+                          )}
+                          <button style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }} onClick={() => copyFromPreviousWeek(start)}>Copy from previous week</button>
+                          <button style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: '1px solid var(--line)', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }} onClick={() => applyToRemainingWeeks(start)}>↓ Apply to remaining weeks</button>
                         </div>
-                      </td>
-                    );
-                  });
-                })()}
-                <td className="font-data" style={{ borderLeft: '1px solid var(--line)', textAlign: 'right', padding: '6px 14px', fontSize: '11px', fontWeight: 600, color: totalCost > fee ? 'var(--hi)' : 'var(--text)' }}>{formatCurrency(totalCost)}</td>
-                <td style={{ padding: '6px 20px' }} />
-              </tr>
-            </tfoot>
-          ) : null}
-        </table>
-
-        {/* Add task footer */}
-        <div style={{ padding: '10px 20px', borderTop: '1px dashed var(--line)' }}>
-          {addingTask ? (
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <input autoFocus value={newTask.name} onChange={(e) => setNewTask({ ...newTask, name: e.target.value })} placeholder="Task name" style={{ ...budgetInputStyle, width: '180px' }} />
-              <input value={newTask.estimatedHours} onChange={(e) => setNewTask({ ...newTask, estimatedHours: e.target.value })} placeholder="Est. hours" type="number" style={{ ...budgetInputStyle, width: '90px' }} />
-              <input value={newTask.startDate} onChange={(e) => setNewTask({ ...newTask, startDate: e.target.value })} type="date" style={budgetInputStyle} />
-              <input value={newTask.numPeriods} onChange={(e) => setNewTask({ ...newTask, numPeriods: e.target.value })} placeholder="# periods" type="number" style={{ ...budgetInputStyle, width: '80px' }} />
-              <button onClick={createTask} style={{ fontSize: '11px', color: '#fff', background: 'var(--accent-btn)', border: 'none', borderRadius: '4px', padding: '4px 12px', cursor: 'pointer' }}>Add</button>
-              <button onClick={() => setAddingTask(false)} style={{ fontSize: '11px', color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
-          ) : (
-            <button style={{ fontSize: '11px', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setAddingTask(true)}>+ Add Task</button>
-          )}
+          ))}
+
+          {monthGroups.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--faint)', fontSize: '12px' }}>No staffing plan yet. Add resources to start building the budget.</div>
+          ) : null}
+
+          {/* Engagement total */}
+          {periodCols.length > 0 ? (
+            <div style={{ ...gridCols, padding: '12px 20px', borderTop: '1px solid var(--line-strong)', background: 'var(--raised)' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Engagement total</div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{periodCols.length} week{periodCols.length === 1 ? '' : 's'}</div>
+              <div className="font-data" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', textAlign: 'right' }}>{fmtH(totalHours)}</div>
+              <div className="font-data" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', textAlign: 'right' }}>{fmtCost(totalCost)}</div>
+            </div>
+          ) : null}
+
+          {/* Legend */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '10px 20px', borderTop: '1px solid var(--line)', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--faint)' }}>
+              <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Segment = person's hours</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', border: '1px solid var(--accent)' }} /> This week outlined</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '50%', border: '1px dashed var(--accent)' }} /> Open role</span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--faint)' }}>Past months collapse · this week opens · future weeks show who's on them</div>
+          </div>
         </div>
 
-        {/* Legend + shortcuts */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '10px 20px', borderTop: '1px solid var(--line)', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--faint)' }}>
-            <span style={{ fontWeight: 600, color: 'var(--muted)' }}>Hours / week:</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--raised)', border: '1px solid var(--line)' }} /> Under 5</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--accent-soft)' }} /> 5–15</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--accent)' }} /> 15+</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ color: 'var(--hi)' }}>!</span> Over-allocated</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: '10px', height: '10px', borderRadius: '50%', border: '1px dashed var(--accent)' }} /> Open role</span>
+        {/* ── RIGHT: totals by person ── */}
+        <div style={{ width: 260, flexShrink: 0, background: 'var(--panel)', borderRadius: '10px', border: '1px solid var(--line)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Totals by person</div>
+            <div style={{ fontSize: '10.5px', color: 'var(--faint)', marginTop: '2px' }}>Each bar is one week · this week outlined</div>
           </div>
-          <div style={{ fontSize: '11px', color: 'var(--faint)' }}>{viewMode === 'month' ? 'Past months collapse by default · the current month opens · future months show totals' : 'Arrow keys to move · Enter to edit · Drag the corner to fill'}</div>
+          <div style={{ padding: '8px 0' }}>
+            {people.map((p) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '7px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: personColor(p.idx), flexShrink: 0 }} />
+                  <span style={{ fontSize: '11.5px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.resourceName}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexShrink: 0 }}>
+                  <span className="font-data" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>{fmtH(p.hours)}</span>
+                  <span className="font-data" style={{ fontSize: '11px', color: 'var(--muted)' }}>{fmtCost(p.cost)}</span>
+                </div>
+              </div>
+            ))}
+            {people.length === 0 ? <div style={{ padding: '16px', fontSize: '11px', color: 'var(--faint)' }}>No resources yet.</div> : null}
+          </div>
         </div>
       </div>
     </div>
