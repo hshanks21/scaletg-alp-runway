@@ -431,60 +431,54 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
 
   return (
     <div style={{ marginBottom: '14px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
-        <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>Budget summary</span>
-        <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{typeLabel} · {prog.total} weeks · Planning</span>
-      </div>
-
-      {/* PERIOD + FEE strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-        {/* PERIOD */}
-        <div style={cardStyle}>
-          <div style={{ ...labelStyle, marginBottom: '10px' }}>PERIOD</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text)' }}>{fmtShortDate(engagement.startDate)} → {fmtShortDate(engagement.endDate)}</span>
-            <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{prog.total} weeks · {fmtH(totalHours)} budgeted</span>
-          </div>
-          <div style={{ display: 'flex', gap: '4px', marginTop: '12px', alignItems: 'flex-start' }}>
-            {months.map((mo) => (
-              <div key={mo.label} style={{ flex: mo.weeks, textAlign: 'center' }}>
-                <div style={{ height: '8px', background: mo.isCurrent ? 'var(--accent)' : 'var(--raised)', borderRadius: '2px', border: `1px solid ${mo.isCurrent ? 'var(--accent)' : 'var(--line)'}` }} />
-                <div style={{ fontSize: '9px', color: mo.isCurrent ? 'var(--accent-btn)' : 'var(--faint)', marginTop: '3px', whiteSpace: 'nowrap' }}>{mo.label}{mo.isCurrent ? ' · this week' : ''}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '8px' }}>{prog.unit} {prog.current} of {prog.total} · {weeksLeft} weeks left</div>
+      {/* Budget summary card: title + PERIOD + FEE */}
+      <div style={{ ...cardStyle, marginBottom: '12px' }}>
+        {/* Title row */}
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>Budget summary</span>
+          <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{typeLabel} · {prog.total} weeks · Planning</span>
         </div>
 
-        {/* FEE */}
-        <div style={cardStyle}>
-          <div style={{ ...labelStyle, marginBottom: '10px' }}>FEE · WHERE THE {formatCurrency(fee)} GOES</div>
-          <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
-            <div>
-              <div className="font-data" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>{formatCurrency(fee)}</div>
-              <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>fee</div>
+        {/* PERIOD + FEE (two columns) */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
+          {/* PERIOD */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={labelStyle}>PERIOD</span>
+              <span style={{ fontSize: '11px', color: 'var(--faint)' }}>Week {prog.current} of {prog.total} · {weeksLeft} weeks left</span>
             </div>
-            <div>
-              <div className="font-data" style={{ fontSize: '18px', fontWeight: 700, color: 'var(--muted)' }}>{formatCurrency(cost)}</div>
-              <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>cost</div>
-            </div>
-            <div>
-              <div className="font-data" style={{ fontSize: '18px', fontWeight: 700, color: belowTarget ? 'var(--hi)' : 'var(--accent)' }}>{formatCurrency(margin)}</div>
-              <div style={{ fontSize: '10px', color: 'var(--faint)', marginTop: '2px' }}>margin</div>
+            <div style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', marginTop: '8px', lineHeight: 1.2 }}>{fmtShortDate(engagement.startDate)} → {fmtShortDate(engagement.endDate)}</div>
+            <div style={{ fontSize: '11px', color: 'var(--faint)', marginTop: '4px' }}>{prog.total} weeks · {fmtH(totalHours)} budgeted</div>
+            <div style={{ display: 'flex', gap: '4px', marginTop: '14px', alignItems: 'flex-start' }}>
+              {months.map((mo) => (
+                <div key={mo.label} style={{ flex: mo.weeks, textAlign: 'center' }}>
+                  <div style={{ height: '8px', background: mo.isCurrent ? 'var(--accent)' : 'var(--raised)', borderRadius: '2px', border: `1px solid ${mo.isCurrent ? 'var(--accent)' : 'var(--line)'}` }} />
+                  <div style={{ fontSize: '9px', color: mo.isCurrent ? 'var(--accent-btn)' : 'var(--faint)', marginTop: '3px', whiteSpace: 'nowrap' }}>{mo.label}{mo.isCurrent ? ' · this week' : ''}</div>
+                </div>
+              ))}
             </div>
           </div>
-          <div style={{ display: 'flex', height: '10px', borderRadius: '999px', overflow: 'hidden', background: 'var(--raised)', marginTop: '14px' }}>
-            <div style={{ width: `${costPct}%`, background: 'var(--accent-btn)' }} />
-            <div style={{ width: `${marginPct}%`, background: 'var(--hi)' }} />
+
+          {/* FEE */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <span style={labelStyle}>FEE · WHERE THE {formatCurrency(fee)} GOES</span>
+              {belowTarget && <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--hi)', whiteSpace: 'nowrap' }}>↓ Margin below [{MARGIN_TARGET_PCT}%] target</span>}
+            </div>
+            <div style={{ display: 'flex', gap: '24px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'baseline' }}>
+              <span style={{ fontSize: '25px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}><span className="font-data">{formatCurrency(fee)}</span> <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--faint)' }}>fee</span></span>
+              <span style={{ fontSize: '25px', fontWeight: 700, color: 'var(--muted)', lineHeight: 1.2 }}><span className="font-data">{formatCurrency(cost)}</span> <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--faint)' }}>cost</span></span>
+              <span style={{ fontSize: '25px', fontWeight: 700, color: belowTarget ? 'var(--hi)' : 'var(--accent)', lineHeight: 1.2 }}><span className="font-data">{formatCurrency(margin)}</span> <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--faint)' }}>margin</span></span>
+            </div>
+            <div style={{ display: 'flex', height: '10px', borderRadius: '999px', overflow: 'hidden', background: 'var(--raised)', marginTop: '14px' }}>
+              <div style={{ width: `${costPct}%`, background: 'var(--accent-btn)' }} />
+              <div style={{ width: `${marginPct}%`, background: 'var(--hi)' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--faint)', marginTop: '4px' }}>
+              <span>Cost {costPct.toFixed(1)}%</span>
+              <span>Margin {marginPct.toFixed(1)}%</span>
+            </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--faint)', marginTop: '4px' }}>
-            <span>Cost {costPct.toFixed(1)}%</span>
-            <span>Margin {marginPct.toFixed(1)}%</span>
-          </div>
-          {belowTarget && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(180, 81, 44, 0.12)', color: 'var(--hi)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', marginTop: '10px' }}>↓ Margin below [{MARGIN_TARGET_PCT}%] target</div>
-          )}
         </div>
       </div>
 
