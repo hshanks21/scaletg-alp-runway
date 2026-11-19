@@ -433,14 +433,15 @@ async function seed() {
   console.log('  ✅ Engagement 3: Meridian Advisory (Approved, 12mo monthly, 9 resources, 6mo actuals, revenue adj)');
 
   // ════════════════════════════════════════════
-  // 8. ENGAGEMENT 4: Mockup Replica
-  //    THE EXACT engagement from AlixPartners' mockup.
+  // 8. ENGAGEMENT 4: Mockup Replica (multi-month)
+  //    The AlixPartners mockup team scaled across 12 weeks / 4 months
+  //    (Sep–Dec 2026) so the stacked-weeks view exercises month grouping,
+  //    past/current/future states, and a live "this week" (Nov 16–22).
   //    Marc Brown, TBD Director, Talmage Corey, Christopher Hakim
-  //    3 weeks weekly, $60K base + $10K contingent adj
-  //    Must tie: Margin 12.27%, Realization 94.3%, Staff/PMD 8.03, Below Dir 62.9%
   // ════════════════════════════════════════════
 
   const [mockup] = await db.insert(engagements).values({
+    id: 'dc51d8cc-a5d2-4f02-ad10-690eb6ddac88',
     clientName: 'Demo Client — AlixPartners Mockup',
     name: 'Engagement Tracker Mockup Replica',
     engagementOwner: 'Marc Brown',
@@ -449,8 +450,8 @@ async function seed() {
     status: 'approved',
     agreedBaseFees: '60000.00',
     contingentFees: '0.00',
-    startDate: '2026-03-30',
-    endDate: '2026-04-19',
+    startDate: '2026-09-14',
+    endDate: '2026-12-06',
     expensesBudget: '9000.00',
     etsBudget: '0.00',
     digitalToolsBudget: '10000.00',
@@ -463,19 +464,19 @@ async function seed() {
     budgetPctBelowDirector: '0.6140',
   }).returning();
 
-  // 3 weeks: 3/30–4/5, 4/6–4/12, 4/13–4/19
-  const mockupPeriods = weekPeriods('2026-03-30', '2026-04-19');
+  // 12 weeks: Sep 14 – Dec 6 (4 months; "this week" = Nov 16–22)
+  const mockupPeriods = weekPeriods('2026-09-14', '2026-12-06');
 
   const [mockTask] = await db.insert(tasks).values({
-    engagementId: mockup.id, name: 'Risk Advisory', estimatedHours: '87.75', sortOrder: 1,
+    engagementId: mockup.id, name: 'Risk Advisory', estimatedHours: '332.25', sortOrder: 1,
   }).returning();
 
   // Engagement rates from the mockup (Rate (eng) column)
   const mockupAllocs = [
-    { resourceId: tbdDirector.id, rate: '1051.4450', hoursPerWeek: [8.5, 8.5, 8.5], placeholderCatId: catDirector.id },
-    { resourceId: marcBrown.id, rate: '1381.4950', hoursPerWeek: [2.5, 2.5, 2.5], placeholderCatId: null },
-    { resourceId: talmageCorey.id, rate: '542.2250', hoursPerWeek: [18.25, 18.25, 18.25], placeholderCatId: null },
-    { resourceId: christopherHakim.id, rate: '971.2900', hoursPerWeek: [0, 0, 0], placeholderCatId: null },
+    { resourceId: tbdDirector.id, rate: '1051.4450', hoursPerWeek: [0, 0, 0, 0, 0, 0, 0, 0, 0, 8.5, 8.5, 8.5], placeholderCatId: catDirector.id },
+    { resourceId: marcBrown.id, rate: '1381.4950', hoursPerWeek: [2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5], placeholderCatId: null },
+    { resourceId: talmageCorey.id, rate: '542.2250', hoursPerWeek: [18.25, 18.25, 20, 20, 18.25, 15, 22, 22, 18.25, 18.25, 18.25, 18.25], placeholderCatId: null },
+    { resourceId: christopherHakim.id, rate: '971.2900', hoursPerWeek: [0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10], placeholderCatId: null },
   ];
 
   for (const alloc of mockupAllocs) {
@@ -493,16 +494,16 @@ async function seed() {
     }
   }
 
-  // Actuals for weeks 1-2 (from the mockup)
+  // Actuals for the 9 past weeks (through Nov 15; this week + future have none)
   const mockupActuals = [
-    { resourceId: marcBrown.id, hours: [3, 3] },
-    { resourceId: talmageCorey.id, hours: [15, 15] },
-    { resourceId: christopherHakim.id, hours: [10, 10] },
-    // TBD Director has 0 actuals
+    { resourceId: marcBrown.id, hours: [3, 3, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5] },
+    { resourceId: talmageCorey.id, hours: [15, 15, 20, 20, 18.25, 15, 22, 22, 18.25] },
+    { resourceId: christopherHakim.id, hours: [0, 0, 0, 0, 0, 0, 0, 10, 10] },
+    // TBD Director has 0 actuals (role unfilled until this week)
   ];
 
   for (const act of mockupActuals) {
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 9; i++) {
       await db.insert(actuals).values({
         engagementId: mockup.id,
         resourceId: act.resourceId,
@@ -515,10 +516,10 @@ async function seed() {
 
   // Forecasts (from the mockup — past periods default to actuals, future to budget)
   const mockupForecasts = [
-    { resourceId: marcBrown.id, hours: [3, 3, 2.5] },
-    { resourceId: talmageCorey.id, hours: [15, 15, 18.25] },
-    { resourceId: christopherHakim.id, hours: [10, 10, 0] },
-    { resourceId: tbdDirector.id, hours: [0, 0, 0] },
+    { resourceId: marcBrown.id, hours: [3, 3, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5] },
+    { resourceId: talmageCorey.id, hours: [15, 15, 20, 20, 18.25, 15, 22, 22, 18.25, 18.25, 18.25, 18.25] },
+    { resourceId: christopherHakim.id, hours: [0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10] },
+    { resourceId: tbdDirector.id, hours: [0, 0, 0, 0, 0, 0, 0, 0, 0, 8.5, 8.5, 8.5] },
   ];
 
   for (const fc of mockupForecasts) {
@@ -533,7 +534,7 @@ async function seed() {
     }
   }
 
-  console.log('  ✅ Engagement 4: Mockup Replica (3wk weekly, exact client data, actuals + forecasts)');
+  console.log('  ✅ Engagement 4: Mockup Replica (12wk weekly, Sep–Dec, 4 resources, actuals + forecasts)');
 
   // ════════════════════════════════════════════
   // Done
@@ -548,7 +549,7 @@ async function seed() {
   console.log('     1. Project Phoenix — Approved, 6mo monthly, 8 resources, 3mo actuals');
   console.log('     2. Operation Atlas — Draft, 3mo weekly, 4 resources');
   console.log('     3. Meridian Advisory — Approved, 12mo monthly, 9 resources, 6mo actuals + adj');
-  console.log('     4. Mockup Replica — Approved, 3wk weekly, exact AlixPartners data');
+  console.log('     4. Mockup Replica — Approved, 12wk weekly, Sep–Dec, 4 resources');
 
   process.exit(0);
 }

@@ -134,7 +134,8 @@ router.get('/:id', async (req, res) => {
       .innerJoin(tasks, eq(allocations.taskId, tasks.id))
       .leftJoin(resources, eq(allocations.resourceId, resources.id))
       .leftJoin(resourceCategories, eq(resources.resourceCategoryId, resourceCategories.id))
-      .where(eq(tasks.engagementId, id));
+      .where(eq(tasks.engagementId, id))
+      .orderBy(asc(resources.name));
 
     const periodRows = await db
       .select({
@@ -457,7 +458,8 @@ router.get('/:id/budget-vs-actual', async (req, res) => {
       .innerJoin(tasks, eq(allocations.taskId, tasks.id))
       .leftJoin(resources, eq(allocations.resourceId, resources.id))
       .leftJoin(resourceCategories, eq(resources.resourceCategoryId, resourceCategories.id))
-      .where(eq(tasks.engagementId, id));
+      .where(eq(tasks.engagementId, id))
+      .orderBy(asc(resources.name));
 
     // Budget periods (from allocation_periods)
     const budgetPeriods = await db
@@ -695,7 +697,8 @@ router.get('/:id/kpis', async (req, res) => {
       .innerJoin(tasks, eq(allocations.taskId, tasks.id))
       .leftJoin(resources, eq(allocations.resourceId, resources.id))
       .leftJoin(resourceCategories, eq(resources.resourceCategoryId, resourceCategories.id))
-      .where(eq(tasks.engagementId, id));
+      .where(eq(tasks.engagementId, id))
+      .orderBy(asc(resources.name));
 
     // Get cost rates by category + region
     const costRateRows = await db.select().from(categoryRates);
