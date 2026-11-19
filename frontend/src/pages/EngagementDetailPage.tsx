@@ -362,23 +362,30 @@ function KpiSummaryLine({ engagementId, mode, refreshToken = 0 }: { engagementId
 
 // ── Budget Summary (header KPIs, above the staffing plan) ──
 
-function monthSegments(startDate: string, endDate: string): { label: string; weeks: number; isCurrent: boolean }[] {
-  const start = new Date(startDate + 'T00:00:00');
+function weekSegments(startDate: string, endDate: string) {
+  const months: { label: string; isCurrent: boolean; weeks: { key: string; isPast: boolean; isCurrent: boolean; isFuture: boolean }[] }[] = [];
+  const today = new Date();
   const end = new Date(endDate + 'T00:00:00');
-  const segs: { label: string; weeks: number; isCurrent: boolean }[] = [];
-  const now = new Date();
-  let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  let cursor = new Date(startDate + 'T00:00:00');
   while (cursor <= end) {
-    const y = cursor.getFullYear();
-    const m = cursor.getMonth();
-    const segStart = cursor > start ? cursor : start;
-    const monthEnd = new Date(y, m + 1, 0);
-    const segEnd = end < monthEnd ? end : monthEnd;
-    const weeks = Math.max(1, Math.round((segEnd.getTime() - segStart.getTime()) / (7 * 86400000)));
-    segs.push({ label: cursor.toLocaleDateString('en-US', { month: 'short' }), weeks, isCurrent: now >= segStart && now <= segEnd });
-    cursor = new Date(y, m + 1, 1);
+    const weekEnd = new Date(cursor);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    const isPast = weekEnd < today;
+    const isCurrent = cursor <= today && today <= weekEnd;
+    const isFuture = cursor > today;
+    const label = cursor.toLocaleDateString('en-US', { month: 'short' });
+    const w = { key: cursor.toISOString().slice(0, 10), isPast, isCurrent, isFuture };
+    const last = months[months.length - 1];
+    if (!last || last.label !== label) {
+      months.push({ label, isCurrent, weeks: [w] });
+    } else {
+      last.weeks.push(w);
+      if (isCurrent) last.isCurrent = true;
+    }
+    cursor = new Date(cursor);
+    cursor.setDate(cursor.getDate() + 7);
   }
-  return segs;
+  return months;
 }
 
 function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: EngagementDetail; refreshToken?: number }) {
@@ -418,7 +425,7 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
 
   const prog = computeProgress(engagement.startDate, engagement.endDate, engagement.periodType);
   const weeksLeft = prog.total - prog.current + 1;
-  const months = monthSegments(engagement.startDate, engagement.endDate);
+  const months = weekSegments(engagement.startDate, engagement.endDate);
 
   const belowTarget = marginPct < MARGIN_TARGET_PCT;
   const marginShort = MARGIN_TARGET_PCT - marginPct;
@@ -432,28 +439,32 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
   return (
     <div style={{ marginBottom: '14px' }}>
       {/* Budget summary card: title + PERIOD + FEE */}
-      <div style={{ ...cardStyle, marginBottom: '12px' }}>
+      <div style={{ ...cardStyle, paddingBottom: '20px', marginBottom: '12px' }}>
         {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', paddingBottom: '14px', borderBottom: '1px solid var(--line)', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', paddingBottom: '14px', borderBottom: '1px solid var(--line-strong)', marginBottom: '16px' }}>
           <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>Budget summary</span>
           <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{typeLabel} · {prog.total} weeks · Planning</span>
         </div>
 
         {/* PERIOD + FEE (two columns) */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px' }}>
           {/* PERIOD */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
               <span style={labelStyle}>PERIOD</span>
-              <span style={{ fontSize: '11px', color: 'var(--faint)' }}>Week {prog.current} of {prog.total} · {weeksLeft} weeks left</span>
+              <span style={{ fontSize: '11px' }}><span style={{ fontWeight: 700, color: 'var(--accent)' }}>Week {prog.current} of {prog.total}</span><span style={{ color: 'var(--faint)' }}> · {weeksLeft} weeks left</span></span>
             </div>
-            <div style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', marginTop: '8px', lineHeight: 1.2 }}>{fmtShortDate(engagement.startDate)} → {fmtShortDate(engagement.endDate)}</div>
-            <div style={{ fontSize: '11px', color: 'var(--faint)', marginTop: '4px' }}>{prog.total} weeks · {fmtH(totalHours)} budgeted</div>
-            <div style={{ display: 'flex', gap: '4px', marginTop: '14px', alignItems: 'flex-start' }}>
-              {months.map((mo) => (
-                <div key={mo.label} style={{ flex: mo.weeks, textAlign: 'center' }}>
-                  <div style={{ height: '8px', background: mo.isCurrent ? 'var(--accent)' : 'var(--raised)', borderRadius: '2px', border: `1px solid ${mo.isCurrent ? 'var(--accent)' : 'var(--line)'}` }} />
-                  <div style={{ fontSize: '9px', color: mo.isCurrent ? 'var(--accent-btn)' : 'var(--faint)', marginTop: '3px', whiteSpace: 'nowrap' }}>{mo.label}{mo.isCurrent ? ' · this week' : ''}</div>
+            <div style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', lineHeight: 1.2 }}>{fmtShortDate(engagement.startDate)} → {fmtShortDate(engagement.endDate)}</div>
+            <div style={{ fontSize: '11px', marginTop: '4px' }}><span style={{ fontWeight: 700, color: 'var(--accent)' }}>{prog.total} weeks</span><span style={{ color: 'var(--faint)' }}> · {fmtH(totalHours)} budgeted</span></div>
+            <div style={{ display: 'flex', marginTop: '14px' }}>
+              {months.map((m, i) => (
+                <div key={m.label} style={{ flex: m.weeks.length, display: 'flex', flexDirection: 'column', gap: '5px', borderLeft: i > 0 ? '1px solid var(--line-strong)' : 'none', paddingLeft: i > 0 ? '6px' : 0 }}>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {m.weeks.map((w) => (
+                      <div key={w.key} style={{ flex: 1, height: '8px', borderRadius: '2px', background: w.isCurrent ? 'var(--accent)' : w.isFuture ? 'var(--accent-soft)' : 'var(--muted)' }} />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '9px', color: m.isCurrent ? 'var(--accent)' : 'var(--faint)', whiteSpace: 'nowrap' }}>{m.label}{m.isCurrent ? ' · this week' : ''}</div>
                 </div>
               ))}
             </div>
@@ -461,11 +472,11 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
 
           {/* FEE */}
           <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
               <span style={labelStyle}>FEE · WHERE THE {formatCurrency(fee)} GOES</span>
-              {belowTarget && <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--hi)', whiteSpace: 'nowrap' }}>↓ Margin below [{MARGIN_TARGET_PCT}%] target</span>}
+              {belowTarget && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(180, 81, 44, 0.12)', color: 'var(--hi)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', whiteSpace: 'nowrap' }}>↓ Margin below [{MARGIN_TARGET_PCT}%] target</span>}
             </div>
-            <div style={{ display: 'flex', gap: '24px', marginTop: '8px', flexWrap: 'wrap', alignItems: 'baseline' }}>
+            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'baseline' }}>
               <span style={{ fontSize: '25px', fontWeight: 700, color: 'var(--text)', lineHeight: 1.2 }}><span className="font-data">{formatCurrency(fee)}</span> <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--faint)' }}>fee</span></span>
               <span style={{ fontSize: '25px', fontWeight: 700, color: 'var(--muted)', lineHeight: 1.2 }}><span className="font-data">{formatCurrency(cost)}</span> <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--faint)' }}>cost</span></span>
               <span style={{ fontSize: '25px', fontWeight: 700, color: belowTarget ? 'var(--hi)' : 'var(--accent)', lineHeight: 1.2 }}><span className="font-data">{formatCurrency(margin)}</span> <span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--faint)' }}>margin</span></span>
@@ -488,7 +499,7 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={labelStyle}>MARGIN</span>
-            {belowTarget && <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--hi)' }}>↓ Below target</span>}
+            {belowTarget && <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(180, 81, 44, 0.12)', color: 'var(--hi)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px' }}>↓ Below target</span>}
           </div>
           <div className="font-data" style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>{marginPct.toFixed(1)}%</div>
           <div style={{ position: 'relative', height: '8px', background: 'var(--raised)', borderRadius: '999px', marginTop: '10px' }}>
@@ -506,7 +517,7 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={labelStyle}>REALIZATION</span>
-            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--accent)' }}>Within target</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px' }}>Within target</span>
           </div>
           <div className="font-data" style={{ fontSize: '28px', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>{realizationPct.toFixed(1)}%</div>
           <div style={{ position: 'relative', height: '8px', background: 'var(--raised)', borderRadius: '999px', marginTop: '10px' }}>
@@ -525,7 +536,7 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
         <div style={cardStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
             <span style={labelStyle}>STAFFING SHAPE</span>
-            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--muted)' }}>{shape}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'var(--raised)', color: 'var(--muted)', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px' }}>{shape}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
             <span className="font-data" style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text)' }}>{staffPmd.toFixed(1)}<span style={{ color: 'var(--faint)', fontSize: '14px' }}> : 1</span></span>
@@ -665,101 +676,99 @@ export function EngagementDetailPage() {
           marginBottom: '16px',
         }}
       >
-        {/* Breadcrumb + status */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '10px' }}>
-          <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
-            <span style={{ color: 'var(--faint)' }}>Engagements</span>
-            <span style={{ color: 'var(--faint)' }}> / </span>
-            <span>{engagement.clientName}</span>
-          </div>
-          <span
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              background: `${meta.dot}1f`,
-              color: theme === 'dark' ? meta.dot : meta.text,
-              fontSize: '12px', fontWeight: 600,
-              padding: '3px 10px', borderRadius: '999px', lineHeight: 1,
-            }}
-          >
-            <span>{engagement.status === 'approved' ? '✓' : '●'}</span>
-            {meta.label}
-          </span>
-        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
+          {/* Left: breadcrumb + title + status + actions */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginBottom: '10px' }}>
+              <span style={{ color: 'var(--faint)' }}>Engagements</span>
+              <span style={{ color: 'var(--faint)' }}> / </span>
+              <span>{engagement.clientName}</span>
+            </div>
 
-        {/* Title + status + actions */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.01em', margin: 0 }}>{engagement.name}</h1>
-          </div>
-        {/* Action buttons */}
-        <div className="flex items-center gap-2">
-          {(engagement.status === 'draft' || engagement.status === 'rejected') && (
-            <button
-              onClick={() => postAction('submit', 'Submitted for approval')}
-              disabled={busy}
-              style={{
-                background: 'var(--accent-btn)',
-                color: '#fff',
-                fontSize: '12px',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: busy ? 'default' : 'pointer',
-                opacity: busy ? 0.6 : 1,
-              }}
-              onMouseEnter={e => { if (!busy) e.currentTarget.style.background = 'var(--accent-btn-hover)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent-btn)'; }}
-            >
-              Submit for Approval
-            </button>
-          )}
-          {engagement.status === 'submitted' && (
-            <>
-              <button
-                onClick={() => postAction('approve', 'Engagement approved')}
-                disabled={busy}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '25px', fontWeight: 600, color: 'var(--text)', fontFamily: "'Fraunces', Georgia, serif", letterSpacing: '-0.01em', margin: 0 }}>{engagement.name}</h1>
+              <span
                 style={{
-                  background: 'var(--accent-btn)',
-                  color: '#fff',
-                  fontSize: '12px',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: 'none',
-                  cursor: busy ? 'default' : 'pointer',
-                  opacity: busy ? 0.6 : 1,
-                }}
-                onMouseEnter={e => { if (!busy) e.currentTarget.style.background = 'var(--accent-btn-hover)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent-btn)'; }}
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => setRejectOpen(true)}
-                disabled={busy}
-                style={{
-                  background: 'transparent',
-                  color: 'var(--hi)',
-                  fontSize: '12px',
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--line-strong)',
-                  cursor: busy ? 'default' : 'pointer',
-                  opacity: busy ? 0.6 : 1,
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  background: `${meta.dot}1f`,
+                  color: theme === 'dark' ? meta.dot : meta.text,
+                  fontSize: '12px', fontWeight: 600,
+                  padding: '3px 10px', borderRadius: '999px', lineHeight: 1,
                 }}
               >
-                Reject
-              </button>
-            </>
-          )}
-        </div>
+                <span>{engagement.status === 'approved' ? '✓' : '●'}</span>
+                {meta.label}
+              </span>
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                {(engagement.status === 'draft' || engagement.status === 'rejected') && (
+                  <button
+                    onClick={() => postAction('submit', 'Submitted for approval')}
+                    disabled={busy}
+                    style={{
+                      background: 'var(--accent-btn)',
+                      color: '#fff',
+                      fontSize: '12px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: busy ? 'default' : 'pointer',
+                      opacity: busy ? 0.6 : 1,
+                    }}
+                    onMouseEnter={e => { if (!busy) e.currentTarget.style.background = 'var(--accent-btn-hover)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent-btn)'; }}
+                  >
+                    Submit for Approval
+                  </button>
+                )}
+                {engagement.status === 'submitted' && (
+                  <>
+                    <button
+                      onClick={() => postAction('approve', 'Engagement approved')}
+                      disabled={busy}
+                      style={{
+                        background: 'var(--accent-btn)',
+                        color: '#fff',
+                        fontSize: '12px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        cursor: busy ? 'default' : 'pointer',
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                      onMouseEnter={e => { if (!busy) e.currentTarget.style.background = 'var(--accent-btn-hover)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'var(--accent-btn)'; }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => setRejectOpen(true)}
+                      disabled={busy}
+                      style={{
+                        background: 'transparent',
+                        color: 'var(--hi)',
+                        fontSize: '12px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--line-strong)',
+                        cursor: busy ? 'default' : 'pointer',
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
 
-        </div>
-
-        {/* Metadata row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start', borderTop: '1px solid var(--line)', paddingTop: '14px' }}>
-          <MetaItem label="Cadence" value={capitalize(engagement.periodType)} />
-          <MetaItem label="Owner" value={engagement.engagementOwner} />
-          <MetaItem label="Last updated" value={`[${relTime(engagement.updatedAt)} by ${engagement.engagementOwner.split(' ')[0]}]`} />
+          {/* Right: meta (labels over values) */}
+          <div style={{ display: 'flex', gap: '32px', flexShrink: 0 }}>
+            <MetaItem label="Cadence" value={capitalize(engagement.periodType)} />
+            <MetaItem label="Owner" value={engagement.engagementOwner} />
+            <MetaItem label="Last updated" value={`[${relTime(engagement.updatedAt)} by ${engagement.engagementOwner.split(' ')[0]}]`} />
+          </div>
         </div>
       </div>
 
