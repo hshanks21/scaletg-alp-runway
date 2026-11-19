@@ -434,7 +434,7 @@ function BudgetSummary({ engagement, refreshToken = 0 }: { engagement: Engagemen
       {/* Budget summary card: title + PERIOD + FEE */}
       <div style={{ ...cardStyle, marginBottom: '12px' }}>
         {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', paddingBottom: '14px', borderBottom: '1px solid var(--line)', marginBottom: '16px' }}>
           <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>Budget summary</span>
           <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{typeLabel} · {prog.total} weeks · Planning</span>
         </div>
